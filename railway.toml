@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/api.Dockerfile"
+
+[deploy]
+healthcheckPath = "/v1/observability/live"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+preDeployCommand = "npm run prisma:deploy -w @flowos/api"
