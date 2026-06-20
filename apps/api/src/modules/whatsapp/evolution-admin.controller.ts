@@ -88,6 +88,26 @@ export class EvolutionAdminController {
   }
 
   @Roles(UserRole.owner, UserRole.admin)
+  @Post("sync-webhook")
+  async syncWebhook() {
+    if (!this.evolution.isConfigured()) {
+      return { ok: false, message: "Evolution nao configurado no .env" };
+    }
+    try {
+      await this.evolution.setWebhook();
+      return {
+        ok: true,
+        message:
+          "Webhook sincronizado com header apikey. Envie uma mensagem de teste e veja o Inbox (aba Todos).",
+        webhookUrl: this.evolution.webhookUrl(),
+        instance: this.evolution.instanceName()
+      };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  @Roles(UserRole.owner, UserRole.admin)
   @Post("disconnect")
   async disconnect() {
     if (!this.evolution.isConfigured()) {

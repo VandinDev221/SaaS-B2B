@@ -133,6 +133,23 @@ export function EvolutionPanel() {
     return data.connect;
   }
 
+  async function runSyncWebhook() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetchWithTimeout("/api/integrations/whatsapp/evolution/sync-webhook", {
+        method: "POST"
+      });
+      const data = (await res.json()) as { ok?: boolean; message?: string };
+      if (!res.ok || !data.ok) throw new Error(data.message ?? "Falha ao sincronizar webhook");
+      setMsg(data.message ?? "Webhook sincronizado.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Erro ao sincronizar webhook");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runSetup() {
     setBusy(true);
     setMsg(null);
@@ -206,6 +223,11 @@ export function EvolutionPanel() {
             {busy ? "Gerando QR..." : "Conectar / Gerar QR Code"}
           </Button>
           {connected ? (
+            <Button type="button" variant="secondary" disabled={busy} onClick={() => void runSyncWebhook()}>
+              {busy ? "Sincronizando..." : "Sincronizar webhook"}
+            </Button>
+          ) : null}
+          {connected ? (
             <Button
               type="button"
               variant="destructive"
@@ -246,6 +268,12 @@ export function EvolutionPanel() {
               Evolution configurado mas offline. Confira se o servidor Evolution esta no ar e se{" "}
               <code className="text-xs">EVOLUTION_API_KEY</code> confere com <code className="text-xs">AUTHENTICATION_API_KEY</code>{" "}
               do container.
+            </>
+          ) : connected ? (
+            <>
+              O Manager nao mostra campo Headers. Use <strong>Sincronizar webhook</strong> para aplicar o{" "}
+              <code className="text-xs">apikey</code> automaticamente (mesmo valor de{" "}
+              <code className="text-xs">EVOLUTION_WEBHOOK_SECRET</code> na API).
             </>
           ) : (
             <>Escaneie o QR no WhatsApp → Aparelhos conectados → Conectar aparelho.</>
