@@ -48,11 +48,12 @@ $createBody = @{
   qrcode       = $true
   integration  = "WHATSAPP-BAILEYS"
   webhook      = @{
-    enabled = $true
-    url     = $webhookUrl
+    enabled  = $true
+    url      = $webhookUrl
     byEvents = $false
-    base64  = $false
-    headers = @{ apikey = $webhookSecret }
+    base64   = $false
+    events   = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
+    headers  = @{ apikey = $webhookSecret }
   }
 } | ConvertTo-Json -Depth 6
 
@@ -66,12 +67,12 @@ try {
 try {
   $wh = @{
     webhook = @{
-      enabled         = $true
-      url             = $webhookUrl
-      webhookByEvents = $false
-      webhookBase64   = $false
-      events          = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
-      headers         = @{ apikey = $webhookSecret }
+      enabled  = $true
+      url      = $webhookUrl
+      byEvents = $false
+      base64   = $false
+      events   = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
+      headers  = @{ apikey = $webhookSecret }
     }
   } | ConvertTo-Json -Depth 6
   Invoke-RestMethod "$evoBase/webhook/set/$instance" -Method POST -Headers $headers -Body $wh | Out-Null

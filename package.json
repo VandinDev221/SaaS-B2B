@@ -18,6 +18,7 @@
     "setup": "powershell -ExecutionPolicy Bypass -File scripts/setup.ps1",
     "setup:evolution": "powershell -ExecutionPolicy Bypass -File scripts/setup-evolution.ps1",
     "setup:evolution:prod": "powershell -ExecutionPolicy Bypass -File scripts/setup-evolution-prod.ps1",
+    "fix:neon-migration": "powershell -ExecutionPolicy Bypass -File scripts/fix-neon-migration-conflict.ps1",
     "setup:ollama": "powershell -ExecutionPolicy Bypass -File scripts/setup-ollama.ps1",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1",
     "health": "powershell -ExecutionPolicy Bypass -File scripts/health-check.ps1",

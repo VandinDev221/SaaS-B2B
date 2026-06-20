@@ -24,6 +24,8 @@ Guia para conectar WhatsApp pelo painel do FLOWOS em producao, usando **flowos-e
 
 O Evolution usa o **mesmo Neon** da API, com schema separado `evolution`.
 
+> **CRITICO:** sem `schema=evolution`, o Evolution migra no `public` e **quebra** o deploy da API (erro P3009 / `20240609181238_init`).
+
 1. Abra **flowos-api** → **Environment** → copie `DATABASE_URL`.
 2. Abra **flowos-evolution** → **Environment** → adicione/edite:
 
@@ -106,6 +108,7 @@ O script mostra o `DATABASE_CONNECTION_URI`, cria a instancia `flowos`, configur
 | `Evolution inacessivel` | flowos-evolution dormindo (free) — abra URL no browser e aguarde |
 | `Evolution API 401` | `EVOLUTION_API_KEY` != `AUTHENTICATION_API_KEY` |
 | Evolution crash no boot | `DATABASE_CONNECTION_URI` ausente ou sem `schema=evolution` |
+| `P3009` / `20240609181238_init` na API | Evolution rodou no `public` — veja recuperacao abaixo |
 | Mensagens nao chegam no Inbox | `EVOLUTION_WEBHOOK_URL` errada ou secret diferente |
 | CORS no login | `CORS_ORIGINS` sem URL da Vercel |
 
@@ -114,3 +117,37 @@ O script mostra o `DATABASE_CONNECTION_URI`, cria a instancia `flowos`, configur
 - **flowos-evolution** e **flowos-api** hibernam sem trafego (~50s para acordar).
 - Na primeira conexao QR, abra `https://flowos-evolution.onrender.com` antes de gerar o QR no SaaS.
 - Sessao WhatsApp fica no Postgres (schema `evolution`), nao no disco efemero do container.
+
+## Recuperacao — erro P3009 (`20240609181238_init`)
+
+Se **flowos-api** e **flowos-evolution** falham com `migrate found failed migrations` e mencionam `20240609181238_init`, o Evolution subiu **sem** `schema=evolution` e sujou o schema `public`.
+
+### 1. Corrigir URI do Evolution (antes de redeploy)
+
+```
+DATABASE_CONNECTION_URI = postgresql://...@neon.../neondb?sslmode=require&schema=evolution
+```
+
+Confirme nos logs do Evolution: `schema "evolution"` (nao `public`).
+
+### 2. Limpar registro falho no Neon
+
+Na sua maquina:
+
+```powershell
+cd c:\dev\SaaS-B2B
+$env:DATABASE_URL = "<copie do Render flowos-api>"
+npm run fix:neon-migration
+```
+
+Ou no **Neon SQL Editor**:
+
+```sql
+DELETE FROM "_prisma_migrations"
+WHERE migration_name = '20240609181238_init';
+```
+
+### 3. Redeploy na ordem
+
+1. **flowos-evolution** (com `DATABASE_CONNECTION_URI` corrigida)
+2. **flowos-api**

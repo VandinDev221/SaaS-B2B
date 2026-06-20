@@ -97,6 +97,7 @@ $createBody = @{
     url      = $WebhookUrl
     byEvents = $false
     base64   = $false
+    events   = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
     headers  = @{ apikey = $WebhookSecret }
   }
 } | ConvertTo-Json -Depth 6
@@ -112,12 +113,12 @@ if ($WebhookSecret) {
   try {
     $wh = @{
       webhook = @{
-        enabled         = $true
-        url             = $WebhookUrl
-        webhookByEvents = $false
-        webhookBase64   = $false
-        events          = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
-        headers         = @{ apikey = $WebhookSecret }
+        enabled  = $true
+        url      = $WebhookUrl
+        byEvents = $false
+        base64   = $false
+        events   = @("MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE")
+        headers  = @{ apikey = $WebhookSecret }
       }
     } | ConvertTo-Json -Depth 6
     Invoke-RestMethod "$evoBase/webhook/set/$Instance" -Method POST -Headers $headers -Body $wh | Out-Null

@@ -30,7 +30,10 @@ export class EvolutionAdminController {
         provider: "evolution",
         instance: this.evolution.instanceName(),
         connectionState,
-        webhookUrl: this.evolution.webhookUrl()
+        webhookUrl: this.evolution.webhookUrl(),
+        ...(connectionState === "close"
+          ? { message: "Instancia pronta. Clique em Conectar / Gerar QR Code." }
+          : {})
       };
     } catch (err) {
       return {

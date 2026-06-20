@@ -163,9 +163,17 @@ export class EvolutionApiClient {
   }
 
   async connectionState() {
-    return this.request<{ instance?: { state?: string }; state?: string }>(
-      `/instance/connectionState/${this.instanceName()}`
-    );
+    try {
+      return await this.request<{ instance?: { state?: string }; state?: string }>(
+        `/instance/connectionState/${this.instanceName()}`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (this.isMissingInstanceError(msg)) {
+        return { state: "close" };
+      }
+      throw err;
+    }
   }
 
   async connect() {
@@ -183,43 +191,41 @@ export class EvolutionApiClient {
     );
   }
 
-  async createInstance() {
+  private webhookConfig() {
     const webhookSecret = this.config.get<string>("EVOLUTION_WEBHOOK_SECRET", "");
+    return {
+      enabled: true,
+      url: this.webhookUrl(),
+      byEvents: false,
+      base64: false,
+      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE"],
+      ...(webhookSecret ? { headers: { apikey: webhookSecret } } : {})
+    };
+  }
+
+  private isMissingInstanceError(message: string): boolean {
+    return (
+      /404|not found|does not exist|instance.*not/i.test(message) ||
+      (/400/i.test(message) && /length|undefined|instance/i.test(message))
+    );
+  }
+
+  async createInstance() {
     return this.request(`/instance/create`, {
       method: "POST",
       body: {
         instanceName: this.instanceName(),
         qrcode: true,
         integration: "WHATSAPP-BAILEYS",
-        webhook: {
-          enabled: true,
-          url: this.webhookUrl(),
-          byEvents: false,
-          base64: false,
-          ...(webhookSecret
-            ? { headers: { apikey: webhookSecret } }
-            : {})
-        }
+        webhook: this.webhookConfig()
       }
     });
-  }
-
-  private webhookPayload() {
-    const webhookSecret = this.config.get<string>("EVOLUTION_WEBHOOK_SECRET", "");
-    return {
-      enabled: true,
-      url: this.webhookUrl(),
-      webhookByEvents: false,
-      webhookBase64: false,
-      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE"],
-      ...(webhookSecret ? { headers: { apikey: webhookSecret } } : {})
-    };
   }
 
   async setWebhook() {
     return this.request(`/webhook/set/${this.instanceName()}`, {
       method: "POST",
-      body: { webhook: this.webhookPayload() }
+      body: { webhook: this.webhookConfig() }
     });
   }
 
@@ -239,16 +245,7 @@ export class EvolutionApiClient {
       const name = this.instanceName();
       return list.some((row) => this.instanceNameFromRow(row) === name);
     } catch {
-      // segue para fallback
-    }
-
-    try {
-      await this.connectionState();
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("404") || msg.includes("does not exist")) return false;
-      throw err;
+      return false;
     }
   }
 
@@ -267,7 +264,24 @@ export class EvolutionApiClient {
         this.logger.log(`Instancia "${this.instanceName()}" ja registrada na Evolution, continuando`);
         return false;
       }
-      throw err;
+      this.logger.warn(`Create com webhook falhou, tentando instancia basica: ${msg}`);
+      try {
+        await this.request(`/instance/create`, {
+          method: "POST",
+          body: {
+            instanceName: this.instanceName(),
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
+          }
+        });
+        return true;
+      } catch (retryErr) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        if (retryMsg.startsWith("INSTANCE_EXISTS:") || /already in use/i.test(retryMsg)) {
+          return false;
+        }
+        throw retryErr;
+      }
     }
   }
 
