@@ -28,7 +28,7 @@ export default async function InboxPage() {
 
   try {
     [inbox, aiStatus] = await Promise.all([
-      apiGet<InboxPayload>("/v1/whatsapp/conversations?filter=all"),
+      apiGet<InboxPayload>("/v1/whatsapp/conversations?filter=all&sync=1"),
       apiGet<{ enabled: boolean; model: string; provider?: string }>("/v1/ai/status")
     ]);
   } catch (e) {

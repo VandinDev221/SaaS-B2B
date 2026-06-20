@@ -8,11 +8,13 @@ import {
 } from "../../common/utils/extract-evolution-message";
 import {
   digitsToWhatsAppJid,
+  jidToWhatsAppDigits,
   normalizeBrazilMobile,
   resolveInboundPhone,
   toE164
 } from "../../common/utils/whatsapp-phone";
 import { conversationStateFromDirection } from "../../common/utils/conversation-message-state";
+import { EvolutionApiClient } from "../integrations/evolution-api.client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FollowupSchedulerService } from "../automation/followup-scheduler.service";
 
@@ -20,6 +22,8 @@ export type EvolutionInboundMessage = {
   remoteJid: string;
   text: string;
   pushName?: string;
+  evolutionMessageId?: string;
+  lidJid?: string;
 };
 
 @Injectable()
@@ -29,6 +33,7 @@ export class WhatsappWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly followupScheduler: FollowupSchedulerService,
+    private readonly evolution: EvolutionApiClient,
     @Inject(forwardRef(() => QuoteFromChatService))
     private readonly quoteFromChat: QuoteFromChatService
   ) {}
@@ -51,7 +56,10 @@ export class WhatsappWebhookService {
       };
 
       const phone = resolveInboundPhone(key, enrichedRow);
-      if (!phone) {
+      const lidJid = String(key.remoteJid ?? "");
+      let remoteJid = phone ? digitsToWhatsAppJid(phone) : null;
+      if (!remoteJid && lidJid.endsWith("@lid")) remoteJid = lidJid;
+      if (!remoteJid) {
         this.logger.debug(
           `Webhook: JID sem telefone BR key=${JSON.stringify({
             remoteJid: key.remoteJid,
@@ -62,20 +70,19 @@ export class WhatsappWebhookService {
         continue;
       }
 
-      const remoteJid = digitsToWhatsAppJid(phone);
-      if (!remoteJid) continue;
-
       const message = (row.message ?? body.message ?? {}) as Record<string, unknown>;
       const text = extractEvolutionMessageText(message);
       if (!text.trim()) {
-        this.logger.debug(`Webhook: mensagem sem texto processavel phone=${phone}`);
+        this.logger.debug(`Webhook: mensagem sem texto processavel phone=${phone ?? lidJid}`);
         continue;
       }
 
       out.push({
         remoteJid,
         text: text.trim(),
-        pushName: String(row.pushName ?? body.pushName ?? "").trim() || undefined
+        pushName: String(row.pushName ?? body.pushName ?? "").trim() || undefined,
+        evolutionMessageId: String(key.id ?? "").trim() || undefined,
+        lidJid: lidJid.endsWith("@lid") ? lidJid : undefined
       });
     }
 
@@ -121,17 +128,12 @@ export class WhatsappWebhookService {
   async findOrCreateLead(tenantId: string, phoneDigits: string, pushName?: string) {
     const normalized = normalizeBrazilMobile(phoneDigits);
     if (!normalized) return null;
-    const suffix = normalized.slice(-8);
     const e164 = toE164(normalized);
 
     const existing = await this.prisma.lead.findFirst({
       where: {
         tenantId,
-        OR: [
-          { phone: e164 },
-          { phone: { endsWith: suffix } },
-          { phone: { contains: suffix } }
-        ]
+        OR: [{ phone: e164 }, { phone: normalized }]
       }
     });
 
@@ -145,11 +147,37 @@ export class WhatsappWebhookService {
       return { lead: { ...existing, phone: e164 }, created: false };
     }
 
-    const company = await this.prisma.company.findFirst({
+    let company = await this.prisma.company.findFirst({
       where: { tenantId },
       orderBy: { createdAt: "asc" }
     });
-    if (!company) return null;
+
+    if (!company) {
+      const owner = await this.prisma.user.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: { createdAt: "asc" },
+        select: { companyId: true }
+      });
+      if (owner?.companyId) {
+        company = await this.prisma.company.findFirst({
+          where: { id: owner.companyId, tenantId }
+        });
+      }
+    }
+
+    if (!company) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) return null;
+      company = await this.prisma.company.create({
+        data: {
+          tenantId,
+          legalName: tenant.name,
+          tradeName: tenant.name,
+          industry: tenant.niche ?? "geral"
+        }
+      });
+      this.logger.warn(`Company criada automaticamente para tenant=${tenantId} (webhook inbound)`);
+    }
 
     const lead = await this.prisma.lead.create({
       data: {
@@ -166,9 +194,28 @@ export class WhatsappWebhookService {
     return { lead, created: true };
   }
 
-  async ingestInbound(tenantId: string, inbound: EvolutionInboundMessage) {
-    const phone = resolveInboundPhone({ remoteJid: inbound.remoteJid }, {});
+  async ingestInbound(
+    tenantId: string,
+    inbound: EvolutionInboundMessage,
+    opts?: { evolutionMessageId?: string; lidJid?: string; source?: "evolution_sync" | "evolution_webhook" }
+  ) {
+    let phone =
+      resolveInboundPhone({ remoteJid: inbound.remoteJid, remoteJidAlt: inbound.remoteJid }, {}) ??
+      jidToWhatsAppDigits(inbound.remoteJid);
+    if (!phone && opts?.lidJid) {
+      phone = await this.resolvePhoneFromLid(tenantId, opts.lidJid);
+    }
     if (!phone) return { ok: false, reason: "invalid_jid" as const };
+
+    if (opts?.evolutionMessageId) {
+      const dup = await this.prisma.message.findFirst({
+        where: {
+          tenantId,
+          metadata: { path: ["evolutionMessageId"], equals: opts.evolutionMessageId }
+        }
+      });
+      if (dup) return { ok: true, skipped: "duplicate" as const, conversationId: dup.conversationId };
+    }
 
     const found = await this.findOrCreateLead(tenantId, phone, inbound.pushName);
     if (!found) {
@@ -181,20 +228,22 @@ export class WhatsappWebhookService {
     let conversation = await this.prisma.conversation.findFirst({
       where: { tenantId, leadId: lead.id }
     });
+    const externalRef =
+      opts?.lidJid ?? inbound.remoteJid ?? digitsToWhatsAppJid(phone) ?? undefined;
     if (!conversation) {
       conversation = await this.prisma.conversation.create({
         data: {
           tenantId,
           leadId: lead.id,
           channel: "whatsapp",
-          externalRef: inbound.remoteJid,
+          externalRef,
           isAiAssisted: true
         }
       });
-    } else if (conversation.externalRef !== inbound.remoteJid) {
+    } else if (externalRef && conversation.externalRef !== externalRef) {
       conversation = await this.prisma.conversation.update({
         where: { id: conversation.id },
-        data: { externalRef: inbound.remoteJid }
+        data: { externalRef }
       });
     }
 
@@ -204,7 +253,10 @@ export class WhatsappWebhookService {
         conversationId: conversation.id,
         direction: "inbound",
         body: inbound.text,
-        metadata: { source: "evolution_webhook" }
+        metadata: {
+          source: opts?.source ?? "evolution_webhook",
+          ...(opts?.evolutionMessageId ? { evolutionMessageId: opts.evolutionMessageId } : {})
+        }
       }
     });
 
@@ -244,5 +296,97 @@ export class WhatsappWebhookService {
       createdLead,
       quoteAuto
     };
+  }
+
+  private async resolvePhoneFromLid(tenantId: string, lidJid: string): Promise<string | null> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { tenantId, externalRef: lidJid },
+      include: { lead: true }
+    });
+    if (!conv?.lead?.phone) return null;
+    return normalizeBrazilMobile(conv.lead.phone.replace(/\D/g, ""));
+  }
+
+  /** Busca mensagens recentes na Evolution quando webhook falha (Render cold start). */
+  async syncInboxFromEvolution(tenantId: string) {
+    if (!this.evolution.isConfigured()) return { imported: 0, skipped: 0 };
+
+    const raw = await this.evolution.findRecentMessages(50);
+    const records = [...(raw.messages?.records ?? [])].sort((a, b) => {
+      const ta = Number(a.messageTimestamp ?? 0);
+      const tb = Number(b.messageTimestamp ?? 0);
+      return ta - tb;
+    });
+
+    const lidPhoneMap = this.buildLidPhoneMap(records);
+    let imported = 0;
+    let skipped = 0;
+
+    for (const row of records) {
+      const result = await this.ingestEvolutionRecord(tenantId, row, lidPhoneMap);
+      if (result.ok && !("skipped" in result && result.skipped)) imported++;
+      else skipped++;
+    }
+
+    if (imported > 0) {
+      this.logger.log(`Evolution sync tenant=${tenantId} imported=${imported} skipped=${skipped}`);
+    }
+    return { imported, skipped };
+  }
+
+  private buildLidPhoneMap(records: Record<string, unknown>[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const row of records) {
+      const key = (row.key ?? {}) as Record<string, unknown>;
+      const lid = String(key.remoteJid ?? "");
+      if (!lid.endsWith("@lid")) continue;
+      const phone = resolveInboundPhone(key, { ...row, senderPn: row.senderPn ?? key.senderPn });
+      if (phone) map.set(lid, phone);
+    }
+    return map;
+  }
+
+  async ingestEvolutionRecord(
+    tenantId: string,
+    row: Record<string, unknown>,
+    lidPhoneMap?: Map<string, string>
+  ) {
+    const key = (row.key ?? {}) as Record<string, unknown>;
+    if (isEvolutionFromMe(key)) return { ok: true, skipped: "from_me" as const };
+
+    const message = (row.message ?? {}) as Record<string, unknown>;
+    const text = extractEvolutionMessageText(message);
+    if (!text.trim()) return { ok: true, skipped: "sem_texto" as const };
+
+    const enrichedRow = {
+      ...row,
+      senderPn: row.senderPn ?? key.senderPn
+    };
+    let phone = resolveInboundPhone(key, enrichedRow);
+    const lidJid = String(key.remoteJid ?? "");
+    const altJid = String(key.remoteJidAlt ?? "");
+    let remoteJid = altJid || (jidToWhatsAppDigits(lidJid) ? lidJid : "");
+
+    if (!phone && lidJid.endsWith("@lid")) {
+      phone = lidPhoneMap?.get(lidJid) ?? (await this.resolvePhoneFromLid(tenantId, lidJid));
+    }
+    if (phone && !remoteJid) {
+      remoteJid = digitsToWhatsAppJid(phone) ?? remoteJid;
+    }
+    if (!phone || !remoteJid) return { ok: false, reason: "invalid_jid" as const };
+
+    return this.ingestInbound(
+      tenantId,
+      {
+        remoteJid,
+        text: text.trim(),
+        pushName: String(row.pushName ?? "").trim() || undefined
+      },
+      {
+        evolutionMessageId: String(key.id ?? "").trim() || undefined,
+        lidJid: lidJid.endsWith("@lid") ? lidJid : undefined,
+        source: "evolution_sync"
+      }
+    );
   }
 }

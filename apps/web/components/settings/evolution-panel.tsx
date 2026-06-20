@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,8 @@ type Status = {
   instance?: string;
   connectionState?: string;
   webhookUrl?: string;
+  webhookSynced?: boolean;
+  webhookError?: string;
   error?: string;
   message?: string;
 };
@@ -72,6 +74,7 @@ export function EvolutionPanel() {
   const [qrSrc, setQrSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const autoSyncAttempted = useRef(false);
 
   async function loadStatus() {
     try {
@@ -79,7 +82,15 @@ export function EvolutionPanel() {
       const data = (await res.json()) as Status;
       setStatus(data);
       if (data.error) setMsg(data.error);
+      else if (data.webhookError) setMsg(data.webhookError);
       else if (data.message) setMsg(data.message);
+
+      const connectedNow =
+        data.connectionState === "open" || data.connectionState === "connected";
+      if (connectedNow && data.webhookSynced === false && !autoSyncAttempted.current) {
+        autoSyncAttempted.current = true;
+        void runSyncWebhook(true);
+      }
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === "AbortError";
       setStatus({
@@ -133,20 +144,23 @@ export function EvolutionPanel() {
     return data.connect;
   }
 
-  async function runSyncWebhook() {
-    setBusy(true);
-    setMsg(null);
+  async function runSyncWebhook(silent = false) {
+    if (!silent) {
+      setBusy(true);
+      setMsg(null);
+    }
     try {
       const res = await fetchWithTimeout("/api/integrations/whatsapp/evolution/sync-webhook", {
         method: "POST"
       });
       const data = (await res.json()) as { ok?: boolean; message?: string };
       if (!res.ok || !data.ok) throw new Error(data.message ?? "Falha ao sincronizar webhook");
-      setMsg(data.message ?? "Webhook sincronizado.");
+      if (!silent) setMsg(data.message ?? "Webhook sincronizado.");
+      await loadStatus();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Erro ao sincronizar webhook");
+      if (!silent) setMsg(e instanceof Error ? e.message : "Erro ao sincronizar webhook");
     } finally {
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
   }
 
@@ -212,6 +226,14 @@ export function EvolutionPanel() {
             {status.webhookUrl ? (
               <p className="break-all text-xs text-muted-foreground">Webhook: {status.webhookUrl}</p>
             ) : null}
+            {connected && status.webhookSynced === false ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Webhook nao sincronizado — mensagens nao chegam ao Inbox ate sincronizar.
+              </p>
+            ) : null}
+            {connected && status.webhookSynced ? (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">Webhook sincronizado.</p>
+            ) : null}
           </div>
         ) : null}
 
@@ -271,9 +293,8 @@ export function EvolutionPanel() {
             </>
           ) : connected ? (
             <>
-              O Manager nao mostra campo Headers. Use <strong>Sincronizar webhook</strong> para aplicar o{" "}
-              <code className="text-xs">apikey</code> automaticamente (mesmo valor de{" "}
-              <code className="text-xs">EVOLUTION_WEBHOOK_SECRET</code> na API).
+              Ao conectar, o webhook e sincronizado automaticamente. Se mensagens nao aparecerem no Inbox,
+              clique em <strong>Sincronizar webhook</strong> e teste de outro numero (nao do aparelho conectado).
             </>
           ) : (
             <>Escaneie o QR no WhatsApp → Aparelhos conectados → Conectar aparelho.</>

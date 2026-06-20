@@ -7,7 +7,7 @@ import { resolveInboundPhone } from "../src/common/utils/whatsapp-phone";
 import { WhatsappWebhookService } from "../src/modules/whatsapp/whatsapp-webhook.service";
 
 describe("whatsapp webhook ingest", () => {
-  const service = new WhatsappWebhookService({} as never, {} as never, {} as never);
+  const service = new WhatsappWebhookService({} as never, {} as never, {} as never, {} as never);
 
   it("aceita evento MESSAGES_UPSERT", () => {
     expect(isEvolutionMessageEvent("MESSAGES_UPSERT")).toBe(true);

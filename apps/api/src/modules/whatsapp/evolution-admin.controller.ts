@@ -25,15 +25,28 @@ export class EvolutionAdminController {
         (state as { state?: string }).state ??
         "unknown";
 
+      const connected = connectionState === "open" || connectionState === "connected";
+      const webhook =
+        connected ? await this.evolution.ensureWebhook() : { synced: false, url: this.evolution.webhookUrl() };
+
       return {
         configured: true,
         provider: "evolution",
         instance: this.evolution.instanceName(),
         connectionState,
         webhookUrl: this.evolution.webhookUrl(),
-        ...(connectionState === "close"
-          ? { message: "Instancia pronta. Clique em Conectar / Gerar QR Code." }
-          : {})
+        webhookSynced: webhook.synced,
+        ...(webhook.error ? { webhookError: webhook.error } : {}),
+        ...(connected && webhook.synced
+          ? { message: "WhatsApp conectado. Webhook sincronizado — mensagens devem aparecer no Inbox (aba Todos)." }
+          : connected && !webhook.synced
+            ? {
+                message:
+                  "WhatsApp conectado, mas o webhook falhou. Clique em Sincronizar webhook ou aguarde cold start da Evolution."
+              }
+            : connectionState === "close"
+              ? { message: "Instancia pronta. Clique em Conectar / Gerar QR Code." }
+              : {})
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -67,7 +80,13 @@ export class EvolutionAdminController {
     }
     try {
       const result = await this.evolution.setup();
-      return { ok: true, ...result };
+      const webhook = await this.evolution.ensureWebhook();
+      return {
+        ok: true,
+        ...result,
+        webhookSynced: webhook.synced,
+        ...(webhook.error ? { webhookError: webhook.error } : {})
+      };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
     }
@@ -81,7 +100,13 @@ export class EvolutionAdminController {
     }
     try {
       const connect = await this.evolution.connectForQr();
-      return { ok: true, connect };
+      const webhook = await this.evolution.ensureWebhook();
+      return {
+        ok: true,
+        connect,
+        webhookSynced: webhook.synced,
+        ...(webhook.error ? { webhookError: webhook.error } : {})
+      };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
     }

@@ -47,17 +47,30 @@ export async function refreshAuthTokens(refreshToken: string): Promise<AuthToken
   }
 }
 
+function authCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isSecureCookies(),
+    path: "/"
+  };
+}
+
 export function applyAuthCookies(
   response: import("next/server").NextResponse,
   tokens: AuthTokens
 ) {
-  const secure = isSecureCookies();
-  const cookieOpts = {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure,
-    path: "/"
-  };
+  const cookieOpts = authCookieOptions();
   response.cookies.set("flowos_access", tokens.accessToken, cookieOpts);
   response.cookies.set("flowos_refresh", tokens.refreshToken, cookieOpts);
+}
+
+/** Atualiza cookies em Route Handlers (fora do middleware). */
+export function applyAuthCookieStore(
+  store: Awaited<ReturnType<typeof import("next/headers").cookies>>,
+  tokens: AuthTokens
+) {
+  const cookieOpts = authCookieOptions();
+  store.set("flowos_access", tokens.accessToken, cookieOpts);
+  store.set("flowos_refresh", tokens.refreshToken, cookieOpts);
 }

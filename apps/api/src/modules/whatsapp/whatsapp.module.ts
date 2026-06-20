@@ -7,11 +7,12 @@ import { WhatsappController } from "./whatsapp.controller";
 import { WhatsappWebhookController } from "./whatsapp-webhook.controller";
 import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 import { WhatsappService } from "./whatsapp.service";
+import { WhatsappInboxSyncWorker } from "./whatsapp-inbox-sync.worker";
 import { PrismaService } from "../../prisma/prisma.service";
 
 @Module({
   imports: [AutomationModule, IntegrationsModule, forwardRef(() => QuotesModule)],
   controllers: [WhatsappController, WhatsappWebhookController, EvolutionAdminController],
-  providers: [WhatsappService, WhatsappWebhookService, PrismaService]
+  providers: [WhatsappService, WhatsappWebhookService, WhatsappInboxSyncWorker, PrismaService]
 })
 export class WhatsappModule {}

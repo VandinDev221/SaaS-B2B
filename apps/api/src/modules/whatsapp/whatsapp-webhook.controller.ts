@@ -45,7 +45,12 @@ export class WhatsappWebhookController {
 
     const results = [];
     for (const msg of messages) {
-      results.push(await this.webhook.ingestInbound(tenantId, msg));
+      results.push(
+        await this.webhook.ingestInbound(tenantId, msg, {
+          evolutionMessageId: msg.evolutionMessageId,
+          lidJid: msg.lidJid
+        })
+      );
     }
 
     this.logger.log(

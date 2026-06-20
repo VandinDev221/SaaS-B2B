@@ -62,11 +62,25 @@ export class EvolutionApiClient {
     }
 
     const text = await res.text();
+
+    if (
+      res.status === 502 ||
+      res.status === 503 ||
+      /^<!DOCTYPE html>/i.test(text.trim())
+    ) {
+      throw new Error(
+        "Evolution offline no Render (502/503). No plano free, aguarde ~1 min e tente de novo (cold start). " +
+          "Se persistir apos o servico ficar Live: Neon SQL -> DROP SCHEMA evolution CASCADE; CREATE SCHEMA evolution; " +
+          "depois Render -> flowos-evolution -> Manual Deploy (aguarde migrations) e reconecte o WhatsApp."
+      );
+    }
+
     let data: T;
     try {
       data = text ? (JSON.parse(text) as T) : ({} as T);
     } catch {
-      throw new Error(`Evolution resposta invalida (${res.status}): ${text}`);
+      const preview = text.length > 180 ? `${text.slice(0, 180)}…` : text;
+      throw new Error(`Evolution resposta invalida (${res.status}): ${preview}`);
     }
 
     if (!res.ok) {
@@ -156,6 +170,17 @@ export class EvolutionApiClient {
     const id = data?.key?.id ?? `evo_doc_${Date.now()}`;
     this.logger.log(`Evolution sendDocument ok to=${number} file=${fileName}`);
     return { providerMessageId: id };
+  }
+
+  async findRecentMessages(limit = 30, page = 1) {
+    return this.request<{
+      messages?: {
+        records?: Array<Record<string, unknown>>;
+      };
+    }>(`/chat/findMessages/${this.instanceName()}`, {
+      method: "POST",
+      body: { limit, page }
+    });
   }
 
   async fetchInstances() {
@@ -269,6 +294,47 @@ export class EvolutionApiClient {
       method: "POST",
       body: { webhook: this.webhookConfig() }
     });
+  }
+
+  async fetchWebhook(): Promise<{ url?: string; enabled?: boolean } | null> {
+    try {
+      const raw = await this.request<{
+        url?: string;
+        enabled?: boolean;
+        webhook?: { url?: string; enabled?: boolean };
+      }>(`/webhook/find/${this.instanceName()}`);
+      const nested = raw.webhook;
+      return {
+        url: nested?.url ?? raw.url,
+        enabled: nested?.enabled ?? raw.enabled
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (this.isMissingInstanceError(msg) || /404|not found/i.test(msg)) return null;
+      throw err;
+    }
+  }
+
+  /** Garante webhook apontando para a API com header apikey (idempotente). */
+  async ensureWebhook(): Promise<{ synced: boolean; url: string; previousUrl?: string; error?: string }> {
+    const expectedUrl = this.webhookUrl();
+    let previousUrl: string | undefined;
+    try {
+      const current = await this.fetchWebhook();
+      previousUrl = current?.url;
+    } catch (err) {
+      this.logger.warn(`Webhook find falhou, aplicando set: ${err}`);
+    }
+
+    try {
+      await this.setWebhook();
+      this.logger.log(`Webhook Evolution sincronizado url=${expectedUrl}`);
+      return { synced: true, url: expectedUrl, previousUrl };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Webhook Evolution nao sincronizado: ${error}`);
+      return { synced: false, url: expectedUrl, previousUrl, error };
+    }
   }
 
   private instanceNameFromRow(row: unknown): string | undefined {

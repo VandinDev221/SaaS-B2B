@@ -29,7 +29,27 @@ type Conversation = {
   messages?: Message[];
 };
 
-const POLL_MS = 4000;
+const POLL_MS = 3000;
+
+async function refreshSession(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store"
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchInbox(filter: InboxFilter): Promise<Response> {
+  return fetch(`/api/whatsapp/conversations?filter=${filter}&sync=1`, {
+    cache: "no-store",
+    credentials: "include"
+  });
+}
 
 type InboxPayload = {
   filter: InboxFilter;
@@ -49,6 +69,8 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
   const [deletingConv, setDeletingConv] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"list" | "chat" | "ai">("list");
   const [live, setLive] = useState(true);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [ai, setAi] = useState<{
     summary?: string;
     draft?: string;
@@ -61,9 +83,23 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
 
   const refreshConversations = useCallback(async () => {
     try {
-      const res = await fetch(`/api/whatsapp/conversations?filter=${filter}`, { cache: "no-store" });
-      if (!res.ok) return;
+      let res = await fetchInbox(filter);
+      if (res.status === 401) {
+        const renewed = await refreshSession();
+        if (renewed) res = await fetchInbox(filter);
+      }
+      if (!res.ok) {
+        setSyncError(
+          res.status === 401
+            ? "Sessao expirada. Faca login de novo."
+            : `Nao foi possivel atualizar (erro ${res.status}).`
+        );
+        return;
+      }
+
       const data = (await res.json()) as InboxPayload;
+      setSyncError(null);
+      setLastSync(new Date());
       setConversations(data.items ?? []);
       if (data.counts) setCounts(data.counts);
       setSelected((current) => {
@@ -72,7 +108,7 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
         return items[0]?.id ?? "";
       });
     } catch {
-      // ignore poll errors
+      setSyncError("Sem conexao. Tentando de novo...");
     }
   }, [filter]);
 
@@ -91,6 +127,16 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
     if (!live) return;
     const id = setInterval(() => void refreshConversations(), POLL_MS);
     return () => clearInterval(id);
+  }, [live, refreshConversations]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && live) {
+        void refreshConversations();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [live, refreshConversations]);
 
   const conv = conversations.find((c) => c.id === selected);
@@ -227,11 +273,18 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          Atualizacao automatica a cada {POLL_MS / 1000}s {live ? "(ativa)" : "(pausada)"}
+          Tempo real a cada {POLL_MS / 1000}s {live ? "(ativo)" : "(pausado)"}
+          {lastSync ? ` · atualizado ${lastSync.toLocaleTimeString("pt-BR")}` : ""}
         </span>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setLive((v) => !v)}>
-          {live ? "Pausar" : "Retomar"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {syncError ? <span className="text-amber-600">{syncError}</span> : null}
+          <Button type="button" size="sm" variant="outline" onClick={() => void refreshConversations()}>
+            Atualizar agora
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setLive((v) => !v)}>
+            {live ? "Pausar" : "Retomar"}
+          </Button>
+        </div>
       </div>
 
       {/* Mobile tabs */}

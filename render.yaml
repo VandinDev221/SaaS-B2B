@@ -46,6 +46,10 @@ services:
         value: https://flowos-api.onrender.com/v1/integrations/whatsapp/webhook/evolution
       - key: AUTOMATION_ENABLED
         value: "true"
+      - key: WHATSAPP_INBOX_SYNC_ENABLED
+        value: "true"
+      - key: WHATSAPP_INBOX_SYNC_INTERVAL_MS
+        value: "8000"
 
   - type: web
     name: flowos-evolution

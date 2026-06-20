@@ -4,18 +4,48 @@ import { resolveOutboundTarget } from "../../common/utils/whatsapp-phone";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AutomationService } from "../automation/automation.service";
 import { FollowupSchedulerService } from "../automation/followup-scheduler.service";
+import { EvolutionApiClient } from "../integrations/evolution-api.client";
 import { WhatsappAdapterService } from "../integrations/whatsapp-adapter.service";
+import { WhatsappWebhookService } from "./whatsapp-webhook.service";
 
 @Injectable()
 export class WhatsappService {
+  private readonly evolutionSyncAt = new Map<string, number>();
+  private readonly evolutionSyncMs = 4_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly automation: AutomationService,
     private readonly followupScheduler: FollowupSchedulerService,
-    private readonly adapter: WhatsappAdapterService
+    private readonly adapter: WhatsappAdapterService,
+    private readonly evolution: EvolutionApiClient,
+    private readonly webhook: WhatsappWebhookService
   ) {}
 
-  listConversations(tenantId: string, filter?: "needs_reply" | "replied" | "all") {
+  private async syncEvolutionInbox(tenantId: string, force = false) {
+    if (!this.evolution.isConfigured()) return;
+    const now = Date.now();
+    const last = this.evolutionSyncAt.get(tenantId) ?? 0;
+    if (!force && now - last < this.evolutionSyncMs) return;
+    this.evolutionSyncAt.set(tenantId, now);
+    try {
+      await this.webhook.syncInboxFromEvolution(tenantId);
+    } catch {
+      // Evolution pode estar hibernando no Render free
+    }
+  }
+
+  async syncInbox(tenantId: string) {
+    await this.syncEvolutionInbox(tenantId, true);
+    return { ok: true };
+  }
+
+  async listConversations(
+    tenantId: string,
+    filter?: "needs_reply" | "replied" | "all",
+    opts?: { forceSync?: boolean }
+  ) {
+    await this.syncEvolutionInbox(tenantId, opts?.forceSync === true);
     const where =
       filter === "needs_reply"
         ? { tenantId, needsReply: true }

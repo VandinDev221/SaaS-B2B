@@ -26,14 +26,21 @@ export class WhatsappController {
   @Get("conversations")
   async listConversations(
     @TenantContext() ctx: { tenantId: string },
-    @Query("filter") filter?: "needs_reply" | "replied" | "all"
+    @Query("filter") filter?: "needs_reply" | "replied" | "all",
+    @Query("sync") sync?: string
   ) {
     const f = filter === "replied" || filter === "all" ? filter : "needs_reply";
+    const forceSync = sync === "1" || sync === "true";
     const [items, counts] = await Promise.all([
-      this.whatsappService.listConversations(ctx.tenantId, f),
+      this.whatsappService.listConversations(ctx.tenantId, f, { forceSync }),
       this.whatsappService.countByFilter(ctx.tenantId)
     ]);
     return { filter: f, counts, items };
+  }
+
+  @Post("inbox/sync")
+  syncInbox(@TenantContext() ctx: { tenantId: string }) {
+    return this.whatsappService.syncInbox(ctx.tenantId);
   }
 
   @Post("conversations/:id/messages")

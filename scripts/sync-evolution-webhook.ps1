@@ -1,4 +1,4 @@
-# Sincroniza webhook da instancia Evolution (header apikey) — Manager nao expoe Headers na UI
+# Sincroniza webhook da instancia Evolution (header apikey) - Manager nao expoe Headers na UI
 param(
   [string]$EvolutionUrl = $env:EVOLUTION_API_URL,
   [string]$ApiKey = $env:EVOLUTION_API_KEY,
@@ -15,11 +15,11 @@ if (-not $WebhookUrl) {
   $WebhookUrl = "https://flowos-api.onrender.com/v1/integrations/whatsapp/webhook/evolution"
 }
 if (-not $ApiKey) {
-  Write-Host "Defina EVOLUTION_API_KEY (Render flowos-api -> Environment)" -ForegroundColor Red
+  Write-Host "Defina EVOLUTION_API_KEY (Render flowos-api, aba Environment)" -ForegroundColor Red
   exit 1
 }
 if (-not $WebhookSecret) {
-  Write-Host "Defina EVOLUTION_WEBHOOK_SECRET (Render flowos-api -> Environment)" -ForegroundColor Red
+  Write-Host "Defina EVOLUTION_WEBHOOK_SECRET (Render flowos-api, aba Environment)" -ForegroundColor Red
   exit 1
 }
 
@@ -43,14 +43,19 @@ try {
   Write-Host "[OK] Webhook com header apikey aplicado." -ForegroundColor Green
   Write-Host "URL: $WebhookUrl" -ForegroundColor Gray
 } catch {
-  $detail = $_.ErrorDetails.Message
-  if ($detail -match "does not exist|instanceId") {
+  $detail = "$($_.Exception.Message) $($_.ErrorDetails.Message)"
+  if ($detail -match '502|503|Bad Gateway|offline no Render') {
+    Write-Host "[X] Evolution retornou 502 - container caiu ou cold start no Render free." -ForegroundColor Red
+    Write-Host "    Aguarde 1 min e tente de novo." -ForegroundColor Yellow
+    exit 1
+  }
+  if ($detail -match 'does not exist|instanceId') {
     Write-Host "[X] Banco Evolution incompleto (migrations v2.3.7 nao rodaram)." -ForegroundColor Red
     Write-Host ""
     Write-Host "1. Neon SQL Editor:" -ForegroundColor Yellow
-    Write-Host "   DROP SCHEMA IF EXISTS evolution CASCADE;" -ForegroundColor Gray
-    Write-Host "   CREATE SCHEMA evolution;" -ForegroundColor Gray
-    Write-Host "2. Render -> flowos-evolution -> Manual Deploy" -ForegroundColor Yellow
+    Write-Host '   DROP SCHEMA IF EXISTS evolution CASCADE;' -ForegroundColor Gray
+    Write-Host '   CREATE SCHEMA evolution;' -ForegroundColor Gray
+    Write-Host "2. Render: flowos-evolution, Manual Deploy" -ForegroundColor Yellow
     Write-Host "   Aguarde log: All migrations have been successfully applied" -ForegroundColor Gray
     Write-Host "3. Rode este script de novo" -ForegroundColor Yellow
     Write-Host ""
