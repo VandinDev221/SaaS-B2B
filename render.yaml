@@ -56,7 +56,7 @@ services:
     runtime: image
     plan: free
     image:
-      url: docker.io/evoapicloud/evolution-api:2.4.0-rc2
+      url: docker.io/evoapicloud/evolution-api:v2.3.7
     healthCheckPath: /
     envVars:
       - key: PORT
@@ -76,8 +76,6 @@ services:
         value: FLOWOS
       - key: WPP_LID_MODE
         value: "false"
-      - key: CONFIG_SESSION_PHONE_VERSION
-        value: "2.3000.1039700148"
       - key: QRCODE_LIMIT
         value: "30"
       - key: DATABASE_ENABLED
