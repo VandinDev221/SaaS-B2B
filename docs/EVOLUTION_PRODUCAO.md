@@ -118,6 +118,7 @@ O script mostra o `DATABASE_CONNECTION_URI`, cria a instancia `flowos`, configur
 | Evolution crash no boot | `DATABASE_CONNECTION_URI` ausente ou sem `schema=evolution` |
 | `P3009` / `20240609181238_init` na API | Evolution rodou no `public` — veja recuperacao abaixo |
 | QR nao aparece (nem no Manager) | Imagem antiga v2.1.1 — use `evoapicloud/evolution-api:v2.3.7` e recrie instancia |
+| `column "instanceId" does not exist` | Schema evolution desatualizado — reset + redeploy (veja abaixo) |
 | `redis disconnected` no Evolution | Desative Redis no Evolution (`CACHE_REDIS_ENABLED=false`); Upstash nao suportado |
 | Mensagens nao chegam no Inbox | `EVOLUTION_WEBHOOK_URL` errada ou secret diferente |
 | CORS no login | `CORS_ORIGINS` sem URL da Vercel |
@@ -173,3 +174,28 @@ Invoke-RestMethod "https://flowos-evolution.onrender.com/instance/delete/flowos"
 ```
 
 Depois gere QR de novo no SaaS ou Manager.
+
+## Recuperacao — `column "instanceId" does not exist`
+
+Aparece nos logs ao receber mensagem (`messages.upsert`) depois de upgrade **v2.1.1 → v2.3.7**.
+
+**Causa:** migrations antigas no schema `evolution` — tabelas da v2.1.1 sem colunas que a v2.3.7 exige.
+
+**Solucao:** resetar **so** o schema `evolution` (nao apaga leads/inbox do FLOWOS):
+
+No **Neon SQL Editor**:
+
+```sql
+DROP SCHEMA IF EXISTS evolution CASCADE;
+CREATE SCHEMA evolution;
+```
+
+Ou localmente: `npm run reset:evolution-schema` (mostra o SQL).
+
+Depois:
+
+1. **flowos-evolution** → Manual Deploy (migrations v2.3.7 do zero)
+2. Reconectar WhatsApp (QR)
+3. `npm run sync:evolution-webhook`
+4. Enviar mensagem de teste → Inbox **Todos**
+
