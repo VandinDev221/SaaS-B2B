@@ -245,37 +245,63 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
     if (!conv || !reply.trim() || sending) return;
     setSending(true);
     setSendError(null);
+    const text = reply.trim();
     try {
+      await refreshSession();
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90_000);
+
       let res = await fetch(`/api/whatsapp/conversations/${conv.id}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ body: reply })
+        body: JSON.stringify({ body: text }),
+        signal: ctrl.signal
       });
+      clearTimeout(timer);
+
       if (res.status === 401) {
         const renewed = await refreshSession();
         if (renewed) {
+          const retryCtrl = new AbortController();
+          const retryTimer = setTimeout(() => retryCtrl.abort(), 90_000);
           res = await fetch(`/api/whatsapp/conversations/${conv.id}/messages`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ body: reply })
+            body: JSON.stringify({ body: text }),
+            signal: retryCtrl.signal
           });
+          clearTimeout(retryTimer);
         }
       }
-      const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string | string[];
+        statusCode?: number;
+        body?: string;
+      };
       if (!res.ok) {
         const apiMsg = Array.isArray(data.message) ? data.message.join(", ") : data.message;
         const hint =
           typeof apiMsg === "string" && /desconectado|Connection Closed/i.test(apiMsg)
             ? " Abra Configuracoes → WhatsApp e reconecte com QR Code."
-            : "";
+            : res.status === 401
+              ? " Faca login de novo."
+              : res.status === 504 || res.status === 408
+                ? " Servidor demorou (Render free). Tente de novo em 1 min."
+                : "";
         throw new Error(`${apiMsg ?? `Erro ao enviar (${res.status})`}${hint}`);
       }
       setReply("");
       await refreshConversations();
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : "Falha ao enviar mensagem");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setSendError("Envio demorou demais. Aguarde 1 min e veja se a mensagem apareceu no chat.");
+      } else {
+        setSendError(e instanceof Error ? e.message : "Falha ao enviar mensagem");
+      }
     } finally {
       setSending(false);
     }
@@ -458,7 +484,7 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
                 }}
               />
               <Button onClick={() => void sendReply()} disabled={sending || !reply.trim()}>
-                {sending ? "Enviando..." : "Enviar"}
+                {sending ? "Enviando (ate 1 min)..." : "Enviar"}
               </Button>
             </div>
           </div>
