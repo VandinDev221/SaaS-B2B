@@ -1,79 +1,73 @@
-# Deploy Render + Neon — passo a passo
+# Deploy Render + Neon + Upstash
 
 Repositorio: https://github.com/VandinDev221/SaaS-B2B
 
-**Banco:** [Neon](https://neon.tech) (Postgres gratuito, sem limite do Render)  
-**API + Web:** Render  
-**Redis:** Render Key Value (1 free por conta)
+| Componente | Servico |
+|------------|---------|
+| **Postgres** | [Neon](https://neon.tech) |
+| **Redis** | [Upstash](https://upstash.com) |
+| **API + Web** | [Render](https://render.com) |
 
 ## Ordem correta
 
 ```
-1. Criar projeto no Neon → copiar DATABASE_URL
-2. Criar Redis no Render (ou reutilizar existente)
-3. Colar DATABASE_URL + REDIS_URL em flowos-api → Environment
+1. Neon → DATABASE_URL
+2. Upstash → REDIS_URL
+3. Colar ambas em flowos-api → Environment
 4. Redeploy da API
-5. Deploy do web (Blueprint)
 ```
 
 ---
 
 ## Passo 1 — Postgres no Neon
 
-1. Acesse [console.neon.tech](https://console.neon.tech) e crie conta (GitHub ok)
-2. **New Project**
-   - **Name:** `flowos`
-   - **Region:** escolha a mais perto (ex. `US East` se API no Render US)
-   - **Postgres:** versao padrao (16+)
-3. No dashboard do projeto → **Connect**
-4. Copie a connection string **sem pooling** (recomendado para Prisma migrate):
+1. [console.neon.tech](https://console.neon.tech) → **New Project** → `flowos`
+2. **Connect** → copie **Direct connection** (nao pooled):
 
 ```
-postgresql://neondb_owner:XXXX@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+postgresql://neondb_owner:XXXX@ep-xxxx.aws.neon.tech/neondb?sslmode=require
 ```
-
-> Use a aba **Connection string** → role `neondb_owner` → **Direct connection** (nao pooled), para migrations funcionarem no deploy.
-
-5. Opcional: renomeie o database para `flowos` em **Databases** (nao obrigatorio — a URL ja funciona com `neondb`).
 
 ---
 
-## Passo 2 — Redis no Render
+## Passo 2 — Redis no Upstash
 
-1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **Key Value**
+1. [console.upstash.com](https://console.upstash.com) → **Create Database**
 2. **Name:** `flowos-redis`
-3. **Maxmemory Policy:** `noeviction`
-4. **Plan:** Free
-5. **Connect** → copie **External Redis URL** ou **Internal**
+3. **Type:** Regional (free tier ok)
+4. **Region:** mesma regiao da API (ex. `us-east-1`)
+5. Apos criar → aba **Redis** → **Connect**
+6. Copie a **Redis URL** (comeca com `rediss://` — TLS obrigatorio):
 
 ```
-redis://red-XXXX:6379
+rediss://default:AXXX...@us1-xxxx.upstash.io:6379
 ```
 
-Se der *"cannot have more than 1 free tier Key Value"*: reutilize o Redis que ja existe na conta.
+> Use a URL **Redis**, nao a REST API (`UPSTASH_REDIS_REST_URL`). O BullMQ precisa da conexao Redis nativa.
 
 ---
 
-## Passo 3 — Blueprint (API + Web)
+## Passo 3 — Blueprint no Render
 
-1. **New +** → **Blueprint** → repo `VandinDev221/SaaS-B2B` → `main`
-2. **Apply** → cria `flowos-api` e `flowos-web`
+1. **New +** → **Blueprint** → `VandinDev221/SaaS-B2B` → `main` → **Apply**
+2. Cria `flowos-api` e `flowos-web`
 
 ---
 
-## Passo 4 — Variaveis na API (obrigatorio)
+## Passo 4 — Variaveis na API
 
 **flowos-api** → **Environment**:
 
 | Variavel | Valor |
 |----------|--------|
-| `DATABASE_URL` | connection string do Neon (Passo 1) |
-| `REDIS_URL` | URL do Redis (Passo 2) |
+| `DATABASE_URL` | URL do Neon |
+| `REDIS_URL` | URL `rediss://` do Upstash |
 
-**Save Changes** → **Manual Deploy** → **Deploy latest commit**
+**Save** → **Manual Deploy**
 
-No log, espere:
-- `prisma migrate deploy` aplicando migrations
+Log esperado:
+- `prisma migrate deploy` OK
+- `Worker BullMQ ativo`
 - `Nest application successfully started`
 
 ---
@@ -85,6 +79,8 @@ curl https://flowos-api.onrender.com/v1/observability/live
 curl https://flowos-api.onrender.com/v1/observability/ready
 ```
 
+O `/ready` deve mostrar `redis: up` e `database: up`.
+
 Web: https://flowos-web.onrender.com/login
 
 ---
@@ -93,27 +89,26 @@ Web: https://flowos-web.onrender.com/login
 
 | Log | Solucao |
 |-----|---------|
-| `DATABASE_URL ausente` | Cole a URL do Neon em flowos-api → Environment |
-| `P1001: Can't reach database` | Confira `?sslmode=require` na URL do Neon |
-| `migrate deploy` falha | Use connection **Direct** do Neon, nao pooled |
-| Redis connection refused | Confira `REDIS_URL` e redeploy |
-| Web 500 | API fora do ar ou `API_URL` errado em flowos-web |
+| `DATABASE_URL ausente` | Cole URL do Neon |
+| `REDIS_URL ausente` | Cole URL `rediss://` do Upstash |
+| `Redis connection` / TLS | Confira que a URL comeca com `rediss://` |
+| `P1001: Can't reach database` | Adicione `?sslmode=require` no Neon |
+| Upstash REST URL usada por engano | Use **Redis URL**, nao REST |
 
 ---
 
-## Neon — dicas
+## Arquitetura final
 
-- **Free tier** do Neon e suficiente para MVP
-- **Auto-suspend:** Neon pausa DB inativo; primeiro request pode demorar ~1s (API Render acorda o Neon no healthcheck)
-- **Backup:** Neon faz backup automatico no free
-- Nao precisa criar Postgres no Render
+```
+[Usuario] → flowos-web (Render)
+                ↓
+           flowos-api (Render)
+            ↓         ↓
+         [Neon]   [Upstash]
+        Postgres    Redis
+```
 
----
-
-## Variaveis opcionais
-
-**flowos-api:** `EVOLUTION_API_URL` (WhatsApp)  
-**flowos-web:** `API_URL` / `NEXT_PUBLIC_API_URL` (se mudar dominio da API)
+Nao precisa criar Postgres nem Redis no Render.
 
 ---
 

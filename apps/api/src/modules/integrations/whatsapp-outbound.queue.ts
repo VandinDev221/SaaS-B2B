@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import type IORedis from "ioredis";
+import { createRedisClient } from "../../common/utils/redis-connection";
 import { WhatsappAdapterService } from "./whatsapp-adapter.service";
 
 export const WHATSAPP_OUTBOUND_QUEUE = "flowos-whatsapp-outbound";
@@ -27,7 +28,7 @@ export class WhatsappOutboundQueue implements OnModuleInit, OnModuleDestroy {
     private readonly adapter: WhatsappAdapterService
   ) {
     const redisUrl = config.get<string>("REDIS_URL", "redis://localhost:6379");
-    this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+    this.connection = createRedisClient(redisUrl);
     this.queue = new Queue(WHATSAPP_OUTBOUND_QUEUE, { connection: this.connection });
   }
 

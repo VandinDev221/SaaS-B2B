@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import type IORedis from "ioredis";
+import { createRedisClient } from "../../common/utils/redis-connection";
 import { BillingRecoveryService } from "../billing/billing-recovery.service";
 import { AUTOMATION_QUEUE_NAME, AutomationJobName } from "./automation.constants";
 import { FollowupD1Service } from "./followup-d1.service";
@@ -30,8 +31,8 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly tenantLifecycle: TenantLifecycleService
   ) {
     const redisUrl = config.get<string>("REDIS_URL", "redis://localhost:6379");
-    this.queueConnection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
-    this.workerConnection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+    this.queueConnection = createRedisClient(redisUrl);
+    this.workerConnection = createRedisClient(redisUrl);
     this.queue = new Queue(AUTOMATION_QUEUE_NAME, { connection: this.queueConnection });
   }
 

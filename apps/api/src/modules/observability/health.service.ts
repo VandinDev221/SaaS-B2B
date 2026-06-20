@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import IORedis from "ioredis";
+import { createRedisClient } from "../../common/utils/redis-connection";
 import { PrismaService } from "../../prisma/prisma.service";
 import { EvolutionApiClient } from "../integrations/evolution-api.client";
 import { MercadoPagoClient } from "../integrations/mercado-pago.client";
@@ -58,7 +58,7 @@ export class HealthService {
 
   private async checkRedis(): Promise<CheckResult> {
     const redisUrl = this.config.get<string>("REDIS_URL", "redis://localhost:6379");
-    const client = new IORedis(redisUrl, { maxRetriesPerRequest: 1, connectTimeout: 3000 });
+    const client = createRedisClient(redisUrl, { maxRetriesPerRequest: 1, connectTimeout: 3000 });
     try {
       const pong = await client.ping();
       return pong === "PONG" ? { status: "up" } : { status: "down", message: "ping invalido" };

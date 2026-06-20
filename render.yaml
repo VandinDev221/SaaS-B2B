@@ -1,7 +1,7 @@
 # https://render.com/docs/blueprint-spec
-# Postgres: Neon (console.neon.tech) — evita limite de 1 DB free no Render.
-# Redis: Render Key Value (1 free por conta) ou existente na conta.
-# Apos Blueprint: flowos-api → Environment → DATABASE_URL (Neon) + REDIS_URL.
+# Postgres: Neon (console.neon.tech)
+# Redis: Upstash (console.upstash.com) — URL rediss://
+# Apos Blueprint: flowos-api → DATABASE_URL + REDIS_URL
 services:
   - type: web
     name: flowos-api
