@@ -141,7 +141,7 @@ export class WhatsappWebhookService {
       if (existing.phone !== e164) {
         await this.prisma.lead.update({
           where: { id: existing.id },
-          data: { phone: e164 }
+          data: { phone: e164, ...(pushName ? { name: pushName } : {}) }
         });
       }
       return { lead: { ...existing, phone: e164 }, created: false };
@@ -225,11 +225,12 @@ export class WhatsappWebhookService {
 
     const { lead, created: createdLead } = found;
 
+    const phoneJid = digitsToWhatsAppJid(phone);
+    const externalRef = phoneJid ?? opts?.lidJid ?? inbound.remoteJid;
+
     let conversation = await this.prisma.conversation.findFirst({
       where: { tenantId, leadId: lead.id }
     });
-    const externalRef =
-      opts?.lidJid ?? inbound.remoteJid ?? digitsToWhatsAppJid(phone) ?? undefined;
     if (!conversation) {
       conversation = await this.prisma.conversation.create({
         data: {
@@ -375,7 +376,7 @@ export class WhatsappWebhookService {
     }
     if (!phone || !remoteJid) return { ok: false, reason: "invalid_jid" as const };
 
-    return this.ingestInbound(
+    const result = await this.ingestInbound(
       tenantId,
       {
         remoteJid,
@@ -388,5 +389,6 @@ export class WhatsappWebhookService {
         source: "evolution_sync"
       }
     );
+    return result;
   }
 }

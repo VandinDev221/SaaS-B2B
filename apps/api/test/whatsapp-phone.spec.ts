@@ -18,4 +18,13 @@ describe("whatsapp-phone", () => {
       })
     ).toBe("5598970112031");
   });
+
+  it("prioriza @lid no externalRef para resposta no mesmo thread WhatsApp", () => {
+    expect(
+      resolveOutboundTarget({
+        externalRef: "161426345865251@lid",
+        leadPhone: "+5598985894988"
+      })
+    ).toBe("161426345865251@lid");
+  });
 });

@@ -128,7 +128,8 @@ export class EvolutionApiClient {
     text: string
   ): Promise<{ providerMessageId: string; deliveryStatus?: string }> {
     await this.assertConnectedForSend();
-    const number = this.normalizePhone(to);
+    const raw = String(to ?? "").trim();
+    const number = raw.includes("@") ? raw : this.normalizePhone(raw);
     const data = await this.request<{ key?: { id?: string } }>(
       `/message/sendText/${this.instanceName()}`,
       {
@@ -151,7 +152,8 @@ export class EvolutionApiClient {
     caption: string
   ): Promise<{ providerMessageId: string }> {
     await this.assertConnectedForSend();
-    const number = this.normalizePhone(to);
+    const raw = String(to ?? "").trim();
+    const number = raw.includes("@") ? raw : this.normalizePhone(raw);
     const base64 = pdf.toString("base64");
     const data = await this.request<{ key?: { id?: string } }>(
       `/message/sendMedia/${this.instanceName()}`,

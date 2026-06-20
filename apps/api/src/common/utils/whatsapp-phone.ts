@@ -102,6 +102,12 @@ export function resolveOutboundTarget(input: {
   externalRef?: string | null;
   leadPhone?: string | null;
 }): string | null {
+  const ref = String(input.externalRef ?? "").trim();
+
+  if (ref.endsWith("@lid")) {
+    return ref;
+  }
+
   const fromJid = jidToWhatsAppDigits(input.externalRef);
   if (fromJid) return fromJid;
 
