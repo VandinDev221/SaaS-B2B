@@ -103,7 +103,15 @@ export class EvolutionAdminController {
         instance: this.evolution.instanceName()
       };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      const message = err instanceof Error ? err.message : String(err);
+      if (/does not exist|instanceId/i.test(message)) {
+        return {
+          ok: false,
+          message:
+            "Banco Evolution incompleto (migrations v2.3.7). No Neon SQL: DROP SCHEMA evolution CASCADE; CREATE SCHEMA evolution; — depois redeploy flowos-evolution e tente de novo."
+        };
+      }
+      return { ok: false, message };
     }
   }
 

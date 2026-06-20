@@ -38,6 +38,24 @@ $body = @{
 } | ConvertTo-Json -Depth 6
 
 Write-Host "Sincronizando webhook instancia '$Instance'..." -ForegroundColor Cyan
-Invoke-RestMethod "$evoBase/webhook/set/$Instance" -Method POST -Headers $headers -Body $body | Out-Null
-Write-Host "[OK] Webhook com header apikey aplicado." -ForegroundColor Green
-Write-Host "URL: $WebhookUrl" -ForegroundColor Gray
+try {
+  Invoke-RestMethod "$evoBase/webhook/set/$Instance" -Method POST -Headers $headers -Body $body | Out-Null
+  Write-Host "[OK] Webhook com header apikey aplicado." -ForegroundColor Green
+  Write-Host "URL: $WebhookUrl" -ForegroundColor Gray
+} catch {
+  $detail = $_.ErrorDetails.Message
+  if ($detail -match "does not exist|instanceId") {
+    Write-Host "[X] Banco Evolution incompleto (migrations v2.3.7 nao rodaram)." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "1. Neon SQL Editor:" -ForegroundColor Yellow
+    Write-Host "   DROP SCHEMA IF EXISTS evolution CASCADE;" -ForegroundColor Gray
+    Write-Host "   CREATE SCHEMA evolution;" -ForegroundColor Gray
+    Write-Host "2. Render -> flowos-evolution -> Manual Deploy" -ForegroundColor Yellow
+    Write-Host "   Aguarde log: All migrations have been successfully applied" -ForegroundColor Gray
+    Write-Host "3. Rode este script de novo" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Ou: npm run reset:evolution-schema" -ForegroundColor Cyan
+    exit 1
+  }
+  throw
+}
