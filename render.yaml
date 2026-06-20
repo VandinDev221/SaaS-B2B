@@ -79,12 +79,11 @@ services:
       - key: DATABASE_CONNECTION_URI
         sync: false
       - key: CACHE_REDIS_ENABLED
+        value: "false"
+      - key: CACHE_LOCAL_ENABLED
         value: "true"
-      - key: CACHE_REDIS_URI
-        fromService:
-          type: web
-          name: flowos-api
-          envVarKey: REDIS_URL
+      - key: CACHE_REDIS_PREFIX_KEY
+        value: flowos
 
   - type: web
     name: flowos-web

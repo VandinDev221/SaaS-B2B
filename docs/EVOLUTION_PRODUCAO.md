@@ -43,7 +43,9 @@ postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require&schema=evolution
 ```
 
-`CACHE_REDIS_URI` e `AUTHENTICATION_API_KEY` ja sincronizam pelo Blueprint (`REDIS_URL` e `EVOLUTION_API_KEY` da API).
+`AUTHENTICATION_API_KEY` ja sincroniza pelo Blueprint (`EVOLUTION_API_KEY` da API).
+
+> **Redis:** o Evolution no Render usa **cache local** (`CACHE_REDIS_ENABLED=false`). O Upstash (`rediss://`) nao e compativel com Evolution v2.1.1 — a API FLOWOS continua usando Redis normalmente.
 
 ## Passo 3 — Variaveis do flowos-api
 
@@ -109,6 +111,7 @@ O script mostra o `DATABASE_CONNECTION_URI`, cria a instancia `flowos`, configur
 | `Evolution API 401` | `EVOLUTION_API_KEY` != `AUTHENTICATION_API_KEY` |
 | Evolution crash no boot | `DATABASE_CONNECTION_URI` ausente ou sem `schema=evolution` |
 | `P3009` / `20240609181238_init` na API | Evolution rodou no `public` — veja recuperacao abaixo |
+| `redis disconnected` no Evolution | Desative Redis no Evolution (`CACHE_REDIS_ENABLED=false`); Upstash nao suportado |
 | Mensagens nao chegam no Inbox | `EVOLUTION_WEBHOOK_URL` errada ou secret diferente |
 | CORS no login | `CORS_ORIGINS` sem URL da Vercel |
 
