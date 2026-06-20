@@ -1,8 +1,10 @@
-# https://render.com — alternativa ao Railway (conecte o repo GitHub no dashboard)
+# https://render.com/docs/blueprint-spec
+# Conecte o repo GitHub: Dashboard → New Blueprint → VandinDev221/SaaS-B2B
 services:
   - type: web
     name: flowos-api
     runtime: docker
+    plan: free
     dockerfilePath: ./infra/docker/api.Dockerfile
     dockerContext: .
     healthCheckPath: /v1/observability/live
@@ -25,11 +27,11 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        sync: false
+        value: https://flowos-web.onrender.com
       - key: PUBLIC_WEB_URL
-        sync: false
+        value: https://flowos-web.onrender.com
       - key: EVOLUTION_API_URL
-        sync: false
+        value: https://evolution.example.com
       - key: EVOLUTION_API_KEY
         generateValue: true
       - key: EVOLUTION_WEBHOOK_SECRET
@@ -38,6 +40,29 @@ services:
         value: "false"
       - key: ALLOW_PIX_MOCK
         value: "false"
+      - key: AUTOMATION_ENABLED
+        value: "true"
+
+  - type: web
+    name: flowos-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./infra/docker/web.Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: API_URL
+        value: https://flowos-api.onrender.com
+      - key: NEXT_PUBLIC_API_URL
+        value: https://flowos-api.onrender.com
+      - key: NEXT_PUBLIC_APP_NAME
+        value: FLOWOS
+      - key: COOKIE_SECURE
+        value: "true"
 
   - type: redis
     name: flowos-redis

@@ -26,12 +26,18 @@ npm run db:seed
 
 Evolution e n8n: use apenas em rede interna; nao exponha n8n sem autenticacao em producao.
 
-## Vercel + Railway (exemplo)
+## Render (producao)
 
-| Componente | Sugestao |
-|------------|----------|
-| Web | Vercel, env `NEXT_PUBLIC_API_URL` |
-| API | Railway/Fly.io, Postgres + Redis addons |
+Blueprint: `render.yaml` na raiz do repo (API + Web + Postgres + Redis).
+
+Guia passo a passo: [DEPLOY_AUTOMATICO.md](./DEPLOY_AUTOMATICO.md)
+
+| Componente | Render |
+|------------|--------|
+| Web | `flowos-web` (Docker `infra/docker/web.Dockerfile`) |
+| API | `flowos-api` (Docker `infra/docker/api.Dockerfile`) |
+| Postgres | `flowos-db` |
+| Redis | `flowos-redis` |
 | Evolution | VPS ou container dedicado com URL publica para webhook |
 
-Webhook Evolution deve alcançar a API: use URL publica, nao `localhost`.
+Webhook Evolution deve alcancar a API: use URL publica, nao `localhost`.

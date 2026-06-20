@@ -15,11 +15,20 @@ function isWeakSecret(value: unknown): boolean {
   return false;
 }
 
+function normalizeOrigin(origin: string): string {
+  const trimmed = origin.trim();
+  if (!trimmed) return trimmed;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
 function parseOrigins(raw: string | undefined): string[] {
   if (!raw?.trim()) return [];
   return raw
     .split(",")
-    .map((o) => o.trim())
+    .map((o) => normalizeOrigin(o))
     .filter(Boolean);
 }
 
@@ -60,7 +69,8 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
       throw new Error("ALLOW_PIX_MOCK nao pode ser true em producao");
     }
 
-    if (!config.PUBLIC_WEB_URL || String(config.PUBLIC_WEB_URL).includes("localhost")) {
+    const publicWebUrl = normalizeOrigin(String(config.PUBLIC_WEB_URL ?? ""));
+    if (!publicWebUrl || publicWebUrl.includes("localhost")) {
       throw new Error("PUBLIC_WEB_URL deve apontar para o dominio publico em producao");
     }
   }
