@@ -95,6 +95,7 @@ Web: https://flowos-web.onrender.com/login
 | `REDIS_URL ausente` | Cole URL `rediss://` do Upstash |
 | `Redis connection` / TLS | Confira que a URL comeca com `rediss://` |
 | `P1001: Can't reach database` | Adicione `?sslmode=require` no Neon |
+| `relation "Lead" does not exist` (P3018) | **Reset** o banco Neon e redeploy |
 | Upstash REST URL usada por engano | Use **Redis URL**, nao REST |
 
 ---
