@@ -61,6 +61,12 @@ function applyConnectResult(
   return !!qr;
 }
 
+function fetchWithTimeout(url: string, init?: RequestInit, ms = 20_000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 export function EvolutionPanel() {
   const [status, setStatus] = useState<Status | null>(null);
   const [qrSrc, setQrSrc] = useState<string | null>(null);
@@ -69,13 +75,24 @@ export function EvolutionPanel() {
 
   async function loadStatus() {
     try {
-      const res = await fetch("/api/integrations/whatsapp/evolution/status");
+      const res = await fetchWithTimeout("/api/integrations/whatsapp/evolution/status");
       const data = (await res.json()) as Status;
       setStatus(data);
       if (data.error) setMsg(data.error);
-    } catch {
-      setStatus({ connectionState: "offline", error: "Nao foi possivel carregar o status." });
-      setMsg("Nao foi possivel carregar o status. Verifique se a API esta na porta 4000.");
+      else if (data.message) setMsg(data.message);
+    } catch (e) {
+      const timedOut = e instanceof DOMException && e.name === "AbortError";
+      setStatus({
+        connectionState: "offline",
+        error: timedOut
+          ? "Evolution demorou para responder (cold start). Tente Atualizar status em 1 min."
+          : "Nao foi possivel carregar o status."
+      });
+      setMsg(
+        timedOut
+          ? "Servidor Evolution hibernando no Render free — aguarde e atualize."
+          : "Nao foi possivel carregar o status. Verifique se a API esta no ar."
+      );
     }
   }
 
@@ -121,7 +138,7 @@ export function EvolutionPanel() {
     setMsg(null);
     setQrSrc(null);
     try {
-      const res = await fetch("/api/integrations/whatsapp/evolution/setup", { method: "POST" });
+      const res = await fetchWithTimeout("/api/integrations/whatsapp/evolution/setup", { method: "POST" }, 45_000);
       const data = (await res.json()) as SetupResult;
       if (!res.ok || !data.ok) throw new Error(data.message ?? "Setup falhou");
 

@@ -337,10 +337,14 @@ export class EvolutionApiClient {
     }
 
     const fromCreate = this.extractConnectQr(createResponse);
-    const connect =
-      fromCreate.base64 || fromCreate.pairingCode
-        ? this.formatConnectPayload(createResponse)
-        : await this.connectForQr();
+    let connect = this.formatConnectPayload(createResponse);
+    if (!fromCreate.base64 && !fromCreate.pairingCode) {
+      try {
+        connect = this.formatConnectPayload(await this.connect());
+      } catch (err) {
+        this.logger.warn(`Connect imediato falhou: ${err}`);
+      }
+    }
 
     const state = await this.connectionState();
     const rawState =

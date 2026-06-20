@@ -285,7 +285,9 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
           <CardContent className="space-y-1 overflow-y-auto p-2">
             {conversations.length === 0 ? (
               <p className="p-2 text-xs text-muted-foreground">
-                {filter === "needs_reply" ? "Nenhuma conversa aguardando resposta." : "Nenhuma conversa nesta aba."}
+                {filter === "needs_reply"
+                  ? "Nenhuma conversa aguardando resposta. Veja a aba Todos ou confira webhook em Configuracoes → WhatsApp."
+                  : "Nenhuma conversa nesta aba."}
               </p>
             ) : (
               conversations.map((c) => (

@@ -43,6 +43,12 @@ export function toE164(digits: string): string {
   return `+${normalizeBrazilMobile(digits) ?? digits}`;
 }
 
+/** Monta JID @s.whatsapp.net a partir de senderPn (Evolution/Baileys com @lid). */
+function jidFromSenderPn(senderPn: unknown): string | null {
+  const normalized = normalizeBrazilMobile(String(senderPn ?? "").replace(/\D/g, ""));
+  return normalized ? `${normalized}@s.whatsapp.net` : null;
+}
+
 /** Escolhe o JID com numero real (prioriza remoteJidAlt — remoteJid costuma ser @lid). */
 export function resolveInboundJid(key: Record<string, unknown>): string | null {
   const candidates = [
@@ -54,6 +60,14 @@ export function resolveInboundJid(key: Record<string, unknown>): string | null {
 
   for (const jid of candidates) {
     if (jidToWhatsAppDigits(jid)) return jid;
+  }
+
+  const fromPn = jidFromSenderPn(key.senderPn);
+  if (fromPn) return fromPn;
+
+  const remoteJid = String(key.remoteJid ?? "");
+  if (remoteJid.endsWith("@lid")) {
+    return jidFromSenderPn(key.senderPn);
   }
 
   return null;
@@ -70,7 +84,7 @@ export function resolveInboundPhone(
     if (digits) return digits;
   }
 
-  const extras = [row?.sender, row?.phoneNumber, row?.number, row?.senderPn];
+  const extras = [key?.senderPn, row?.senderPn, row?.sender, row?.phoneNumber, row?.number];
   for (const raw of extras) {
     const normalized = normalizeBrazilMobile(String(raw ?? "").replace(/\D/g, ""));
     if (normalized) return normalized;

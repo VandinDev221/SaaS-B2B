@@ -19,7 +19,7 @@ export class EvolutionAdminController {
     }
 
     try {
-      const state = await this.evolution.connectionState();
+      const state = await this.withTimeout(this.evolution.connectionState(), 12_000);
       const connectionState =
         (state as { instance?: { state?: string } }).instance?.state ??
         (state as { state?: string }).state ??
@@ -36,14 +36,27 @@ export class EvolutionAdminController {
           : {})
       };
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const coldStart = /timeout|inacessivel|fetch failed/i.test(message);
       return {
         configured: true,
         provider: "evolution",
         instance: this.evolution.instanceName(),
-        connectionState: "offline",
-        error: err instanceof Error ? err.message : String(err)
+        connectionState: coldStart ? "close" : "offline",
+        error: coldStart
+          ? "Evolution acordando (Render free). Aguarde ~1 min e clique Atualizar status."
+          : message
       };
     }
+  }
+
+  private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("Evolution timeout — servidor pode estar hibernando")), ms)
+      )
+    ]);
   }
 
   @Roles(UserRole.owner, UserRole.admin)
