@@ -14,6 +14,12 @@ Guia para conectar WhatsApp pelo painel do FLOWOS em producao, usando **flowos-e
               WhatsApp (QR Code)
 ```
 
+## Nota sobre versao da imagem
+
+Usamos **`evoapicloud/evolution-api:v2.3.7`** (nao `atendai/evolution-api:v2.1.1`).
+
+A v2.1.1 tem bug conhecido: loop infinito de reconexao Baileys que **impede gerar QR Code** (nem no Manager). Corrigido na v2.3.7 — ver [PR #2365](https://github.com/evolution-foundation/evolution-api/pull/2365) e [issue #2430](https://github.com/evolution-foundation/evolution-api/issues/2430).
+
 ## Passo 1 — Atualizar Blueprint no Render
 
 1. Faca push do `render.yaml` atualizado para `main`.
@@ -111,6 +117,7 @@ O script mostra o `DATABASE_CONNECTION_URI`, cria a instancia `flowos`, configur
 | `Evolution API 401` | `EVOLUTION_API_KEY` != `AUTHENTICATION_API_KEY` |
 | Evolution crash no boot | `DATABASE_CONNECTION_URI` ausente ou sem `schema=evolution` |
 | `P3009` / `20240609181238_init` na API | Evolution rodou no `public` — veja recuperacao abaixo |
+| QR nao aparece (nem no Manager) | Imagem antiga v2.1.1 — use `evoapicloud/evolution-api:v2.3.7` e recrie instancia |
 | `redis disconnected` no Evolution | Desative Redis no Evolution (`CACHE_REDIS_ENABLED=false`); Upstash nao suportado |
 | Mensagens nao chegam no Inbox | `EVOLUTION_WEBHOOK_URL` errada ou secret diferente |
 | CORS no login | `CORS_ORIGINS` sem URL da Vercel |
@@ -152,5 +159,17 @@ WHERE migration_name = '20240609181238_init';
 
 ### 3. Redeploy na ordem
 
-1. **flowos-evolution** (com `DATABASE_CONNECTION_URI` corrigida)
+1. **flowos-evolution** (imagem v2.3.7 + `DATABASE_CONNECTION_URI` corrigida)
 2. **flowos-api**
+
+### 4. Recriar instancia `flowos` (se QR ainda falhar)
+
+Instancias criadas na v2.1.1 podem ficar corrompidas. No Manager ou via API:
+
+```powershell
+# Com EVOLUTION_API_KEY do Render
+$headers = @{ apikey = "SUA_CHAVE" }
+Invoke-RestMethod "https://flowos-evolution.onrender.com/instance/delete/flowos" -Method DELETE -Headers $headers
+```
+
+Depois gere QR de novo no SaaS ou Manager.

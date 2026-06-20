@@ -52,7 +52,7 @@ services:
     runtime: image
     plan: free
     image:
-      url: docker.io/atendai/evolution-api:v2.1.1
+      url: docker.io/evoapicloud/evolution-api:v2.3.7
     healthCheckPath: /
     envVars:
       - key: PORT
