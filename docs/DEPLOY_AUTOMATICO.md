@@ -1,102 +1,130 @@
-# Deploy — GitHub + Render
+# Deploy Render — passo a passo
 
 Repositorio: https://github.com/VandinDev221/SaaS-B2B
 
-## 1. Banco e Redis (uma vez por conta)
+## Ordem correta (importante)
 
-O plano **free** do Render permite **apenas 1 Postgres e 1 Redis** por conta.
+A API **nao sobe** sem `DATABASE_URL` e `REDIS_URL`. Crie o banco e o Redis **antes** de esperar o deploy da API funcionar.
 
-### Se voce ainda nao tem Postgres/Redis
+```
+1. Criar Postgres no Render
+2. Criar Redis no Render
+3. Colar URLs em flowos-api → Environment
+4. Redeploy da API
+5. Blueprint / deploy do web
+```
 
-1. [dashboard.render.com](https://dashboard.render.com) → **New → PostgreSQL** → nome `flowos-db`
-2. **New → Key Value** (Redis) → nome `flowos-redis`, policy **noeviction**
-3. Em cada um, copie a **Internal Connection String** (ou External se a API for publica)
+---
 
-### Se o Blueprint falhou com "cannot have more than one free tier"
+## Passo 1 — PostgreSQL
 
-Voce **ja tem** `flowos-db` e/ou `flowos-redis` criados (tentativa anterior ou outro projeto). Reutilize-os — nao crie duplicados.
+1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **PostgreSQL**
+2. **Name:** `flowos-db`
+3. **Database:** `flowos`
+4. **User:** `flowos`
+5. **Plan:** Free (se disponivel)
+6. **Create Database**
 
-- Postgres → **Connect** → copie `Connection String`
-- Redis → **Connect** → copie `Redis URL`
+Se aparecer *"cannot have more than one active free tier database"*:
+- Va em **Dashboard** e procure **qualquer** Postgres ja criado (outro nome/projeto)
+- **Opcao A:** apague o que nao usa e crie `flowos-db`
+- **Opcao B:** reutilize o Postgres existente (qualquer nome serve)
 
-## 2. Aplicar o Blueprint (API + Web)
+Copie a connection string:
+- Abra o Postgres → **Connect** → **External Database URL** (ou Internal)
 
-1. **New → Blueprint** → repo `VandinDev221/SaaS-B2B` (branch `main`)
-2. O `render.yaml` cria apenas:
-   - **flowos-api** — NestJS
-   - **flowos-web** — Next.js
-3. **Apply** e aguarde o deploy dos dois servicos
+Exemplo:
+```
+postgresql://flowos:XXXX@dpg-XXXX.oregon-postgres.render.com/flowos
+```
 
-## 3. Configurar variaveis na API (obrigatorio)
+---
 
-Antes do primeiro deploy bem-sucedido da API, em **flowos-api → Environment**:
+## Passo 2 — Redis (Key Value)
+
+1. **New +** → **Key Value** (Redis)
+2. **Name:** `flowos-redis`
+3. **Plan:** Free
+4. **Maxmemory Policy:** `noeviction` (importante para filas BullMQ)
+5. **Create Key Value**
+
+Se aparecer *"cannot have more than 1 free tier Key Value"*:
+- Reutilize o Redis existente ou apague o que nao usa
+
+Copie a URL:
+- Abra o Redis → **Connect** → **Internal Redis URL** ou **External**
+
+Exemplo:
+```
+redis://red-XXXX:6379
+```
+
+---
+
+## Passo 3 — Blueprint (API + Web)
+
+1. **New +** → **Blueprint**
+2. Repo: `VandinDev221/SaaS-B2B` → branch `main`
+3. **Apply**
+
+Cria `flowos-api` e `flowos-web` (nao cria Postgres/Redis — limite free da conta).
+
+---
+
+## Passo 4 — Variaveis na API (obrigatorio)
+
+**flowos-api** → **Environment** → adicione:
 
 | Variavel | Valor |
 |----------|--------|
-| `DATABASE_URL` | Connection string do Postgres (`flowos-db` ou o que voce ja tem) |
-| `REDIS_URL` | URL do Redis (`flowos-redis` ou o que voce ja tem) |
+| `DATABASE_URL` | connection string do Passo 1 |
+| `REDIS_URL` | URL do Passo 2 |
 
-Salve e clique **Manual Deploy → Deploy latest commit**.
+Clique **Save Changes**.
 
-As demais variaveis (`JWT_*`, `CORS_ORIGINS`, etc.) o Blueprint ja preenche.
+Depois: **Manual Deploy** → **Deploy latest commit**.
 
-### URLs padrao
+Aguarde o log mostrar migrations aplicadas e `Nest application successfully started`.
 
-| Servico | URL |
-|---------|-----|
-| Web | https://flowos-web.onrender.com |
-| API | https://flowos-api.onrender.com |
+---
 
-## 4. Variaveis opcionais
-
-No painel do servico **flowos-api**, apos o primeiro deploy:
-
-| Variavel | Quando ajustar |
-|----------|----------------|
-| `EVOLUTION_API_URL` | Quando tiver Evolution API publica (WhatsApp) |
-| `CORS_ORIGINS` | Se usar dominio customizado no front |
-| `PUBLIC_WEB_URL` | Se usar dominio customizado no front |
-
-No painel do servico **flowos-web**:
-
-| Variavel | Quando ajustar |
-|----------|----------------|
-| `API_URL` | Se a URL da API mudar (dominio customizado) |
-| `NEXT_PUBLIC_API_URL` | Mesmo valor de `API_URL` — exige **redeploy** do web |
-
-## 5. Smoke test
+## Passo 5 — Testar
 
 ```bash
 curl https://flowos-api.onrender.com/v1/observability/live
 curl https://flowos-api.onrender.com/v1/observability/ready
 ```
 
-Abra https://flowos-web.onrender.com/login
+Web: https://flowos-web.onrender.com/login
 
-## 6. Por que nao usar Vercel para este projeto?
+---
 
-O front Next.js usa rotas BFF (`app/api/*`) e Server Components que chamam a API NestJS em runtime. Na Vercel, sem `NEXT_PUBLIC_API_URL` configurado corretamente, tudo retorna **500**.
+## Erros comuns
 
-A stack completa (API + Postgres + Redis + workers BullMQ) roda melhor no **Render** com Docker.
+| Log | Causa | Solucao |
+|-----|-------|---------|
+| `Environment variable not found: DATABASE_URL` | Postgres nao configurado na API | Passo 4 |
+| `ERRO: DATABASE_URL ausente` | Mesmo problema | Cole a URL e redeploy |
+| `cannot have more than one free tier database` | Ja existe Postgres free na conta | Reutilize ou apague o antigo |
+| `Prisma failed to detect libssl` | Alpine sem OpenSSL | Corrigido no Dockerfile (push recente) |
+| Web 500 | API fora do ar ou URL errada | Confira `API_URL` em flowos-web |
 
-## 7. Dominio customizado (opcional)
+---
 
-1. Render → servico **flowos-web** → Settings → Custom Domain
-2. Render → servico **flowos-api** → Settings → Custom Domain
-3. Atualize `CORS_ORIGINS`, `PUBLIC_WEB_URL`, `API_URL` e `NEXT_PUBLIC_API_URL`
-4. Redeploy dos dois servicos
+## Variaveis opcionais depois
 
-## 8. Evolution / WhatsApp (fase 2)
+**flowos-api:**
+- `EVOLUTION_API_URL` — quando tiver WhatsApp/Evolution
 
-Suba Evolution em VPS ou container com URL publica e atualize `EVOLUTION_API_URL` na API.
-Webhook: `https://SUA-API/v1/integrations/whatsapp/webhook/evolution`
+**flowos-web** (exige redeploy se mudar):
+- `API_URL` / `NEXT_PUBLIC_API_URL` — URL publica da API
 
-## 9. Atualizar codigo
+---
 
-Cada push na branch `main` dispara redeploy automatico no Render (se Auto-Deploy estiver ativo).
+## Atualizar codigo
 
 ```powershell
-git add .
-git commit -m "sua mensagem"
 git push origin main
 ```
+
+Render redeploya automaticamente se Auto-Deploy estiver ativo.
