@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { normalizeWhatsAppContact } from "../../common/utils/whatsapp-phone";
+import type { EvolutionQuotedReply } from "../../common/utils/whatsapp-outbound";
 
 type EvolutionFetchOptions = {
   method?: string;
@@ -125,13 +126,14 @@ export class EvolutionApiClient {
 
   async sendText(
     to: string,
-    text: string
+    text: string,
+    opts?: { quoted?: EvolutionQuotedReply }
   ): Promise<{ providerMessageId: string; deliveryStatus?: string }> {
     await this.assertConnectedForSend();
     const raw = String(to ?? "").trim();
-    if (raw.endsWith("@lid")) {
+    if (raw.endsWith("@lid") && !opts?.quoted) {
       throw new Error(
-        "Envio para @lid nao entrega no celular. Corrija o telefone do lead ou peca nova mensagem do cliente."
+        "Envio para @lid sem citar mensagem anterior nao entrega. Aguarde mensagem do cliente."
       );
     }
     const number = raw.includes("@") ? raw : this.normalizePhone(raw);
@@ -139,13 +141,17 @@ export class EvolutionApiClient {
       `/message/sendText/${this.instanceName()}`,
       {
         method: "POST",
-        body: { number, text }
+        body: {
+          number,
+          text,
+          ...(opts?.quoted ? { quoted: opts.quoted } : {})
+        }
       }
     );
     const id = data?.key?.id ?? `evo_${Date.now()}`;
     const deliveryStatus = String((data as { status?: string }).status ?? "PENDING");
     this.logger.log(
-      `Evolution sendText ok to=${number} (input=${to}) id=${id} status=${deliveryStatus}`
+      `Evolution sendText ok to=${number} (input=${to}) id=${id} status=${deliveryStatus} quoted=${!!opts?.quoted}`
     );
     return { providerMessageId: id, deliveryStatus };
   }

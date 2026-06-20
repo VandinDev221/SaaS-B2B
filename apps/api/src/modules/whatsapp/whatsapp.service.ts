@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { extractEvolutionMessageText } from "../../common/utils/extract-evolution-message";
 import { conversationStateFromDirection } from "../../common/utils/conversation-message-state";
-import { resolveOutboundTarget } from "../../common/utils/whatsapp-phone";
+import { buildQuotedReply } from "../../common/utils/whatsapp-outbound";
+import { digitsToWhatsAppJid, resolveOutboundTarget } from "../../common/utils/whatsapp-phone";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AutomationService } from "../automation/automation.service";
 import { FollowupSchedulerService } from "../automation/followup-scheduler.service";
@@ -107,6 +109,66 @@ export class WhatsappService {
     return null;
   }
 
+  private async resolveOutboundSend(
+    conv: { id: string; externalRef: string | null; lead: { phone: string | null } }
+  ) {
+    const phone = await this.resolveRecipientWithLid(conv);
+    if (!phone) return null;
+
+    const inbounds = await this.prisma.message.findMany({
+      where: { conversationId: conv.id, direction: "inbound" },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+      select: { body: true, metadata: true }
+    });
+
+    const lastInbound =
+      inbounds.find((m) => {
+        const meta = (m.metadata ?? {}) as Record<string, unknown>;
+        return typeof meta.evolutionMessageId === "string" && meta.evolutionMessageId.length > 0;
+      }) ?? inbounds[0];
+
+    const meta = (lastInbound?.metadata ?? {}) as Record<string, unknown>;
+    const whatsappLid = String(meta.whatsappLid ?? "").trim();
+    const threadJid = whatsappLid.endsWith("@lid")
+      ? whatsappLid
+      : digitsToWhatsAppJid(phone);
+
+    const quoted = buildQuotedReply({
+      evolutionMessageId: String(meta.evolutionMessageId ?? ""),
+      threadJid,
+      inboundBody: lastInbound?.body
+    });
+
+    let resolvedQuoted = quoted;
+    if (!resolvedQuoted && this.evolution.isConfigured() && threadJid) {
+      try {
+        const raw = await this.evolution.findRecentMessages(40);
+        const records = [...(raw.messages?.records ?? [])].reverse();
+        const match = records.find((row) => {
+          const key = (row.key ?? {}) as Record<string, unknown>;
+          if (key.fromMe === true) return false;
+          const jid = String(key.remoteJid ?? "");
+          return jid === threadJid || jid.endsWith("@lid");
+        });
+        if (match) {
+          const key = (match.key ?? {}) as Record<string, unknown>;
+          const message = (match.message ?? {}) as Record<string, unknown>;
+          resolvedQuoted = buildQuotedReply({
+            evolutionMessageId: String(key.id ?? ""),
+            threadJid: String(key.remoteJid ?? threadJid),
+            inboundBody: extractEvolutionMessageText(message)
+          });
+        }
+      } catch {
+        // Evolution pode estar hibernando
+      }
+    }
+
+    const to = digitsToWhatsAppJid(phone) ?? phone;
+    return { to, quoted: resolvedQuoted, phone };
+  }
+
   async sendMessage(tenantId: string, conversationId: string, body: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
@@ -114,8 +176,8 @@ export class WhatsappService {
     });
     if (!conv) throw new NotFoundException("Conversa nao encontrada");
 
-    const to = await this.resolveRecipientWithLid(conv);
-    if (!to) {
+    const outbound = await this.resolveOutboundSend(conv);
+    if (!outbound) {
       throw new BadRequestException(
         "Telefone invalido para WhatsApp. Corrija o numero do lead no CRM (ex.: +55 DDD 9XXXX-XXXX) ou peca ao cliente enviar uma nova mensagem."
       );
@@ -126,9 +188,10 @@ export class WhatsappService {
     try {
       const sent = await this.adapter.sendTemplateMessage({
         tenantId,
-        to,
+        to: outbound.to,
         templateName: "free_text",
-        body
+        body,
+        quoted: outbound.quoted
       });
       providerMessageId = sent.providerMessageId;
       deliveryStatus = sent.deliveryStatus;
@@ -143,7 +206,13 @@ export class WhatsappService {
         conversationId,
         direction: "outbound",
         body,
-        metadata: { source: "flowos_inbox", providerMessageId, to, deliveryStatus }
+        metadata: {
+          source: "flowos_inbox",
+          providerMessageId,
+          to: outbound.phone,
+          deliveryStatus,
+          quoted: Boolean(outbound.quoted)
+        }
       }
     });
 

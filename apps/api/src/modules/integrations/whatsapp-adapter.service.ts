@@ -2,6 +2,7 @@ import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common"
 import { ConfigService } from "@nestjs/config";
 import { isProductionEnv } from "../../config/env.validation";
 import { EvolutionApiClient } from "./evolution-api.client";
+import type { EvolutionQuotedReply } from "../../common/utils/whatsapp-outbound";
 
 @Injectable()
 export class WhatsappAdapterService {
@@ -37,6 +38,7 @@ export class WhatsappAdapterService {
     templateName: string;
     body?: string;
     variables?: Record<string, string>;
+    quoted?: EvolutionQuotedReply;
   }) {
     const text =
       input.body ??
@@ -51,7 +53,7 @@ export class WhatsappAdapterService {
     this.assertCanSend(input.tenantId, input.to, "template");
 
     if (this.evolution.isConfigured()) {
-      const sent = await this.evolution.sendText(input.to, text);
+      const sent = await this.evolution.sendText(input.to, text, { quoted: input.quoted });
       return {
         provider: "evolution",
         providerMessageId: sent.providerMessageId,
