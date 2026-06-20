@@ -5,7 +5,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch(e){}\"",
     "start:dev": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch(e){}\" && nest build && nest start --watch",
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "start": "node dist/main",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest --config ./test/jest-e2e.json",
