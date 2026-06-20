@@ -75,6 +75,19 @@ describe("whatsapp webhook ingest", () => {
     expect(service.extractInboundMessages(body)).toHaveLength(1);
   });
 
+  it("extrai mensagem usando body.sender quando JID e @lid", () => {
+    const body = {
+      event: "MESSAGES_UPSERT",
+      instance: "flowos",
+      sender: "5598970112031@s.whatsapp.net",
+      data: {
+        key: { remoteJid: "69385314111689@lid", fromMe: false },
+        message: { conversation: "Oi via sender" }
+      }
+    };
+    expect(service.extractInboundMessages(body)).toHaveLength(1);
+  });
+
   it("aceita audio como texto placeholder", () => {
     const text = extractEvolutionMessageText({ audioMessage: {} });
     expect(text).toBe("[Audio]");

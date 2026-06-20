@@ -19,7 +19,7 @@ type InboxPayload = {
 
 export default async function InboxPage() {
   let inbox: InboxPayload = {
-    filter: "needs_reply",
+    filter: "all",
     counts: { needsReply: 0, replied: 0, total: 0 },
     items: []
   };
@@ -28,7 +28,7 @@ export default async function InboxPage() {
 
   try {
     [inbox, aiStatus] = await Promise.all([
-      apiGet<InboxPayload>("/v1/whatsapp/conversations?filter=needs_reply"),
+      apiGet<InboxPayload>("/v1/whatsapp/conversations?filter=all"),
       apiGet<{ enabled: boolean; model: string; provider?: string }>("/v1/ai/status")
     ]);
   } catch (e) {

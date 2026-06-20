@@ -37,21 +37,26 @@ export class WhatsappWebhookService {
     const event = String(body.event ?? "");
     if (!isEvolutionMessageEvent(event)) return [];
 
-    const root = body.data ?? body;
-    const items = Array.isArray(root) ? root : [root];
+    const items = this.collectWebhookItems(body);
     const out: EvolutionInboundMessage[] = [];
 
-    for (const item of items) {
-      const row = item as Record<string, unknown>;
+    for (const row of items) {
       const key = (row.key ?? body.key) as Record<string, unknown> | undefined;
       if (!key || isEvolutionFromMe(key)) continue;
 
-      const phone = resolveInboundPhone(key, row);
+      const enrichedRow = {
+        ...row,
+        sender: row.sender ?? body.sender,
+        senderPn: row.senderPn ?? key.senderPn
+      };
+
+      const phone = resolveInboundPhone(key, enrichedRow);
       if (!phone) {
         this.logger.debug(
           `Webhook: JID sem telefone BR key=${JSON.stringify({
             remoteJid: key.remoteJid,
-            remoteJidAlt: key.remoteJidAlt
+            remoteJidAlt: key.remoteJidAlt,
+            sender: enrichedRow.sender
           })}`
         );
         continue;
@@ -77,16 +82,33 @@ export class WhatsappWebhookService {
     return out;
   }
 
+  private collectWebhookItems(body: Record<string, unknown>): Record<string, unknown>[] {
+    const root = body.data ?? body;
+    if (Array.isArray(root)) {
+      return root.filter((item) => item && typeof item === "object") as Record<string, unknown>[];
+    }
+    if (root && typeof root === "object") {
+      const data = root as Record<string, unknown>;
+      if (Array.isArray(data.messages)) {
+        return data.messages.filter((item) => item && typeof item === "object") as Record<
+          string,
+          unknown
+        >[];
+      }
+      return [data];
+    }
+    return [body];
+  }
+
   /** Motivo resumido quando nenhuma mensagem foi extraida (para log/debug). */
   describeSkip(body: Record<string, unknown>): string {
     const event = String(body.event ?? "(vazio)");
     if (!isEvolutionMessageEvent(event)) return `evento_ignorado:${event}`;
 
-    const root = body.data ?? body;
-    const items = Array.isArray(root) ? root : [root];
+    const items = this.collectWebhookItems(body);
     if (items.length === 0) return "data_vazio";
 
-    const row = items[0] as Record<string, unknown>;
+    const row = items[0];
     const key = (row.key ?? body.key) as Record<string, unknown> | undefined;
     if (!key) return "sem_key";
     if (isEvolutionFromMe(key)) return "from_me";

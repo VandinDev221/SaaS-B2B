@@ -70,10 +70,34 @@ $webhookBody = @{
   }
 } | ConvertTo-Json -Depth 8
 
-Invoke-Step "Webhook simulado" {
-  $whHeaders = @{ "content-type" = "application/json" }
-  if ($WebhookSecret) { $whHeaders["apikey"] = $WebhookSecret }
+Invoke-Step "Webhook simulado (header apikey)" {
+  if (-not $WebhookSecret) { throw "defina EVOLUTION_WEBHOOK_SECRET" }
+  $whHeaders = @{ "content-type" = "application/json"; apikey = $WebhookSecret }
   $r = Invoke-RestMethod "$ApiUrl/integrations/whatsapp/webhook/evolution" -Method POST -Headers $whHeaders -Body $webhookBody -TimeoutSec 60
+  Write-Host "   response: $($r | ConvertTo-Json -Compress)" -ForegroundColor Gray
+  if (-not $r.ok) { throw "webhook ok=false reason=$($r.reason)" }
+  if ($r.skipped) { throw "webhook ignorou: $($r.skipped)" }
+  if ($r.processed -lt 1) { throw "nenhuma mensagem processada" }
+}
+
+$webhookBodyWithKey = @{
+  event    = "MESSAGES_UPSERT"
+  instance = "flowos"
+  apikey   = $WebhookSecret
+  data     = @{
+    key = @{
+      remoteJid    = "69385314111689@lid"
+      remoteJidAlt = "${TestPhone}@s.whatsapp.net"
+      fromMe       = $false
+    }
+    message  = @{ conversation = "Teste body apikey $(Get-Date -Format 'HH:mm:ss')" }
+    pushName = "Teste Body Key"
+  }
+} | ConvertTo-Json -Depth 8
+
+Invoke-Step "Webhook simulado (apikey no body, Evolution v2)" {
+  if (-not $WebhookSecret) { throw "defina EVOLUTION_WEBHOOK_SECRET" }
+  $r = Invoke-RestMethod "$ApiUrl/integrations/whatsapp/webhook/evolution" -Method POST -Headers @{ "content-type" = "application/json" } -Body $webhookBodyWithKey -TimeoutSec 60
   Write-Host "   response: $($r | ConvertTo-Json -Compress)" -ForegroundColor Gray
   if (-not $r.ok) { throw "webhook ok=false reason=$($r.reason)" }
   if ($r.skipped) { throw "webhook ignorou: $($r.skipped)" }

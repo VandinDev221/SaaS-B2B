@@ -39,7 +39,7 @@ type InboxPayload = {
 
 export function InboxHub({ initial }: { initial: InboxPayload }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<InboxFilter>(initial.filter ?? "needs_reply");
+  const [filter, setFilter] = useState<InboxFilter>(initial.filter ?? "all");
   const [counts, setCounts] = useState(initial.counts);
   const [conversations, setConversations] = useState(initial.items);
   const [selected, setSelected] = useState(initial.items[0]?.id ?? "");
@@ -77,7 +77,7 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
   }, [filter]);
 
   useEffect(() => {
-    setFilter(initial.filter ?? "needs_reply");
+    setFilter(initial.filter ?? "all");
     setCounts(initial.counts);
     setConversations(initial.items);
     setSelected(initial.items[0]?.id ?? "");
