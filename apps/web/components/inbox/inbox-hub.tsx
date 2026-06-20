@@ -47,6 +47,7 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [deletingConv, setDeletingConv] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<"list" | "chat" | "ai">("list");
   const [live, setLive] = useState(true);
   const [ai, setAi] = useState<{
     summary?: string;
@@ -223,8 +224,8 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           Atualizacao automatica a cada {POLL_MS / 1000}s {live ? "(ativa)" : "(pausada)"}
         </span>
@@ -233,8 +234,32 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
         </Button>
       </div>
 
+      {/* Mobile tabs */}
+      <div className="flex gap-1 rounded-xl border border-border/60 bg-muted/30 p-1 lg:hidden">
+        {(
+          [
+            ["list", "Conversas"],
+            ["chat", "Chat"],
+            ["ai", "IA"]
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMobilePanel(key)}
+            className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition ${
+              mobilePanel === key ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[280px_1fr_300px]">
-        <Card className="h-[560px] overflow-hidden">
+        <Card
+          className={`h-[min(70vh,560px)] overflow-hidden lg:block ${mobilePanel === "list" ? "block" : "hidden"}`}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Conversas</CardTitle>
             <div className="mt-2 flex flex-wrap gap-1">
@@ -267,7 +292,10 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => setSelected(c.id)}
+                  onClick={() => {
+                    setSelected(c.id);
+                    setMobilePanel("chat");
+                  }}
                   className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
                     selected === c.id ? "bg-primary/10 text-primary" : "hover:bg-muted"
                   }`}
@@ -287,7 +315,9 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
           </CardContent>
         </Card>
 
-        <Card className="flex h-[560px] flex-col">
+        <Card
+          className={`flex h-[min(70vh,560px)] flex-col lg:flex ${mobilePanel === "chat" ? "flex" : "hidden"}`}
+        >
           <CardHeader className="border-b border-border pb-3">
             <div className="flex items-start justify-between gap-2">
               <CardTitle className="text-sm">{conv?.lead?.name ?? "Selecione uma conversa"}</CardTitle>
@@ -367,7 +397,7 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
           </div>
         </Card>
 
-        <Card className="h-[560px]">
+        <Card className={`h-[min(70vh,560px)] lg:block ${mobilePanel === "ai" ? "block" : "hidden"}`}>
           <CardHeader>
             <CardTitle className="text-sm">IA Comercial</CardTitle>
             <p className="text-xs text-muted-foreground">Resumo, classificacao e sugestoes</p>
