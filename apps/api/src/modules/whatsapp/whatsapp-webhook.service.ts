@@ -9,7 +9,7 @@ import {
 import {
   digitsToWhatsAppJid,
   jidToWhatsAppDigits,
-  normalizeBrazilMobile,
+  normalizeWhatsAppContact,
   resolveInboundPhone,
   toE164
 } from "../../common/utils/whatsapp-phone";
@@ -126,7 +126,7 @@ export class WhatsappWebhookService {
   }
 
   async findOrCreateLead(tenantId: string, phoneDigits: string, pushName?: string) {
-    const normalized = normalizeBrazilMobile(phoneDigits);
+    const normalized = normalizeWhatsAppContact(phoneDigits);
     if (!normalized) return null;
     const e164 = toE164(normalized);
 
@@ -225,9 +225,8 @@ export class WhatsappWebhookService {
 
     const { lead, created: createdLead } = found;
 
-    const phoneJid = digitsToWhatsAppJid(phone);
-    const lidRef = opts?.lidJid?.endsWith("@lid") ? opts.lidJid : null;
-    const externalRef = lidRef ?? phoneJid ?? inbound.remoteJid;
+    const phoneJid = digitsToWhatsAppJid(phone) ?? inbound.remoteJid;
+    const externalRef = phoneJid;
 
     let conversation = await this.prisma.conversation.findFirst({
       where: { tenantId, leadId: lead.id }
@@ -242,18 +241,11 @@ export class WhatsappWebhookService {
           isAiAssisted: true
         }
       });
-    } else {
-      const nextRef =
-        lidRef ??
-        (conversation.externalRef?.endsWith("@lid") ? conversation.externalRef : null) ??
-        phoneJid ??
-        conversation.externalRef;
-      if (nextRef && conversation.externalRef !== nextRef) {
-        conversation = await this.prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { externalRef: nextRef }
-        });
-      }
+    } else if (phoneJid && conversation.externalRef !== phoneJid) {
+      conversation = await this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { externalRef: phoneJid }
+      });
     }
 
     await this.prisma.message.create({
@@ -264,6 +256,7 @@ export class WhatsappWebhookService {
         body: inbound.text,
         metadata: {
           source: opts?.source ?? "evolution_webhook",
+          whatsappPhone: phone,
           ...(opts?.evolutionMessageId ? { evolutionMessageId: opts.evolutionMessageId } : {}),
           ...(opts?.lidJid ? { whatsappLid: opts.lidJid } : {})
         }
@@ -310,11 +303,14 @@ export class WhatsappWebhookService {
 
   private async resolvePhoneFromLid(tenantId: string, lidJid: string): Promise<string | null> {
     const conv = await this.prisma.conversation.findFirst({
-      where: { tenantId, externalRef: lidJid },
+      where: {
+        tenantId,
+        OR: [{ externalRef: lidJid }, { messages: { some: { metadata: { path: ["whatsappLid"], equals: lidJid } } } }]
+      },
       include: { lead: true }
     });
     if (!conv?.lead?.phone) return null;
-    return normalizeBrazilMobile(conv.lead.phone.replace(/\D/g, ""));
+    return normalizeWhatsAppContact(conv.lead.phone);
   }
 
   /** Busca mensagens recentes na Evolution quando webhook falha (Render cold start). */
@@ -349,15 +345,21 @@ export class WhatsappWebhookService {
     return { imported, skipped };
   }
 
-  /** Corrige externalRef @lid e telefone do lead a partir da Evolution. */
+  /** Corrige telefone do lead e externalRef com o numero real da Evolution (nao @lid). */
   private async repairOutboundTarget(tenantId: string, lid: string, phone: string) {
     const e164 = toE164(phone);
+    const phoneJid = digitsToWhatsAppJid(phone);
     const suffix = phone.slice(-8);
     const convs = await this.prisma.conversation.findMany({
       where: {
         tenantId,
         channel: "whatsapp",
-        OR: [{ externalRef: lid }, { lead: { phone: e164 } }, { lead: { phone: { endsWith: suffix } } }]
+        OR: [
+          { externalRef: lid },
+          { lead: { phone: e164 } },
+          { lead: { phone: { endsWith: suffix } } },
+          { messages: { some: { metadata: { path: ["whatsappLid"], equals: lid } } } }
+        ]
       },
       include: { lead: true }
     });
@@ -369,10 +371,10 @@ export class WhatsappWebhookService {
           data: { phone: e164 }
         });
       }
-      if (conv.externalRef !== lid) {
+      if (phoneJid && conv.externalRef !== phoneJid) {
         await this.prisma.conversation.update({
           where: { id: conv.id },
-          data: { externalRef: lid }
+          data: { externalRef: phoneJid }
         });
       }
     }

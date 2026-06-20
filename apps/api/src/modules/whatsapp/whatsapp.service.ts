@@ -93,7 +93,7 @@ export class WhatsappService {
       externalRef: conv.externalRef,
       leadPhone: conv.lead.phone
     });
-    if (fromRef?.endsWith("@lid")) return fromRef;
+    if (fromRef) return fromRef;
 
     const lastInbound = await this.prisma.message.findFirst({
       where: { conversationId: conv.id, direction: "inbound" },
@@ -101,10 +101,10 @@ export class WhatsappService {
       select: { metadata: true }
     });
     const meta = (lastInbound?.metadata ?? {}) as Record<string, unknown>;
-    const lid = String(meta.whatsappLid ?? "").trim();
-    if (lid.endsWith("@lid")) return lid;
+    const altPhone = String(meta.whatsappPhone ?? "").trim();
+    if (altPhone) return altPhone;
 
-    return fromRef;
+    return null;
   }
 
   async sendMessage(tenantId: string, conversationId: string, body: string) {

@@ -1,7 +1,12 @@
-/** Extrai e valida numero BR para Evolution API (somente @s.whatsapp.net). */
+/** Extrai digitos do JID WhatsApp sem reinterpretar (Evolution/Baileys e a fonte da verdade). */
 export function jidToWhatsAppDigits(jid: string | undefined | null): string | null {
   if (!jid || !jid.endsWith("@s.whatsapp.net")) return null;
-  return normalizeBrazilMobile(jid.replace(/@.*/, "").replace(/\D/g, ""));
+  const digits = jid.replace(/@.*/, "").replace(/\D/g, "");
+  if (!digits.startsWith("55")) return null;
+  if (digits.length < 12 || digits.length > 13) return null;
+  const ddd = Number(digits.slice(2, 4));
+  if (ddd < 11 || ddd > 99) return null;
+  return digits;
 }
 
 /** Celular BR sem o 9 extra apos o DDD (12 digitos) → insere o 9 (13 digitos). */
@@ -39,13 +44,26 @@ export function normalizeBrazilMobile(raw: string): string | null {
   return digits;
 }
 
+/**
+ * Normaliza contato para envio WhatsApp.
+ * Preserva digitos 12/13 ja vindos do JID (nao injeta 9 em numero que o WhatsApp ja conhece).
+ */
+export function normalizeWhatsAppContact(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) {
+    const ddd = Number(digits.slice(2, 4));
+    if (ddd >= 11 && ddd <= 99) return digits;
+  }
+  return normalizeBrazilMobile(digits);
+}
+
 export function toE164(digits: string): string {
-  return `+${normalizeBrazilMobile(digits) ?? digits}`;
+  return `+${normalizeWhatsAppContact(digits) ?? normalizeBrazilMobile(digits) ?? digits}`;
 }
 
 /** Monta JID @s.whatsapp.net a partir de senderPn (Evolution/Baileys com @lid). */
 function jidFromSenderPn(senderPn: unknown): string | null {
-  const normalized = normalizeBrazilMobile(String(senderPn ?? "").replace(/\D/g, ""));
+  const normalized = normalizeWhatsAppContact(String(senderPn ?? "").replace(/\D/g, ""));
   return normalized ? `${normalized}@s.whatsapp.net` : null;
 }
 
@@ -65,11 +83,6 @@ export function resolveInboundJid(key: Record<string, unknown>): string | null {
   const fromPn = jidFromSenderPn(key.senderPn);
   if (fromPn) return fromPn;
 
-  const remoteJid = String(key.remoteJid ?? "");
-  if (remoteJid.endsWith("@lid")) {
-    return jidFromSenderPn(key.senderPn);
-  }
-
   return null;
 }
 
@@ -86,7 +99,7 @@ export function resolveInboundPhone(
 
   const extras = [key?.senderPn, row?.senderPn, row?.sender, row?.phoneNumber, row?.number];
   for (const raw of extras) {
-    const normalized = normalizeBrazilMobile(String(raw ?? "").replace(/\D/g, ""));
+    const normalized = normalizeWhatsAppContact(String(raw ?? "").replace(/\D/g, ""));
     if (normalized) return normalized;
   }
 
@@ -94,25 +107,25 @@ export function resolveInboundPhone(
 }
 
 export function digitsToWhatsAppJid(digits: string): string | null {
-  const normalized = normalizeBrazilMobile(digits.replace(/\D/g, ""));
+  const normalized = normalizeWhatsAppContact(digits.replace(/\D/g, ""));
   return normalized ? `${normalized}@s.whatsapp.net` : null;
 }
 
+/** Destino de envio: sempre numero real — @lid nao entrega no celular do cliente. */
 export function resolveOutboundTarget(input: {
   externalRef?: string | null;
   leadPhone?: string | null;
 }): string | null {
   const ref = String(input.externalRef ?? "").trim();
 
-  if (ref.endsWith("@lid")) {
-    return ref;
+  if (ref.endsWith("@s.whatsapp.net")) {
+    const fromJid = jidToWhatsAppDigits(ref);
+    if (fromJid) return fromJid;
   }
 
-  const fromJid = jidToWhatsAppDigits(input.externalRef);
-  if (fromJid) return fromJid;
-
   if (input.leadPhone) {
-    return normalizeBrazilMobile(input.leadPhone.replace(/\D/g, ""));
+    const fromLead = normalizeWhatsAppContact(input.leadPhone);
+    if (fromLead) return fromLead;
   }
 
   return null;

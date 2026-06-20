@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { normalizeBrazilMobile } from "../../common/utils/whatsapp-phone";
+import { normalizeWhatsAppContact } from "../../common/utils/whatsapp-phone";
 
 type EvolutionFetchOptions = {
   method?: string;
@@ -100,7 +100,7 @@ export class EvolutionApiClient {
   }
 
   normalizePhone(phone: string): string {
-    const normalized = normalizeBrazilMobile(phone.replace(/\D/g, ""));
+    const normalized = normalizeWhatsAppContact(phone);
     if (!normalized) {
       throw new Error(
         `Numero WhatsApp invalido: "${phone}". Use DDD + numero (ex.: 559884325771 ou +55 98 8432-5771).`
@@ -129,6 +129,11 @@ export class EvolutionApiClient {
   ): Promise<{ providerMessageId: string; deliveryStatus?: string }> {
     await this.assertConnectedForSend();
     const raw = String(to ?? "").trim();
+    if (raw.endsWith("@lid")) {
+      throw new Error(
+        "Envio para @lid nao entrega no celular. Corrija o telefone do lead ou peca nova mensagem do cliente."
+      );
+    }
     const number = raw.includes("@") ? raw : this.normalizePhone(raw);
     const data = await this.request<{ key?: { id?: string } }>(
       `/message/sendText/${this.instanceName()}`,
@@ -153,6 +158,11 @@ export class EvolutionApiClient {
   ): Promise<{ providerMessageId: string }> {
     await this.assertConnectedForSend();
     const raw = String(to ?? "").trim();
+    if (raw.endsWith("@lid")) {
+      throw new Error(
+        "Envio para @lid nao entrega no celular. Corrija o telefone do lead ou peca nova mensagem do cliente."
+      );
+    }
     const number = raw.includes("@") ? raw : this.normalizePhone(raw);
     const base64 = pdf.toString("base64");
     const data = await this.request<{ key?: { id?: string } }>(
