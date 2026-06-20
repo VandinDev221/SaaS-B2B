@@ -67,7 +67,7 @@ export class EvolutionAdminController {
       return { ok: false, message: "Evolution nao configurado no .env" };
     }
     try {
-      const connect = await this.evolution.connect();
+      const connect = await this.evolution.connectForQr();
       return { ok: true, connect };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };

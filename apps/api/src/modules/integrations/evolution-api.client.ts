@@ -176,8 +176,50 @@ export class EvolutionApiClient {
     }
   }
 
+  private extractConnectQr(raw: unknown) {
+    if (!raw || typeof raw !== "object") {
+      return { base64: undefined as string | undefined, pairingCode: undefined as string | null | undefined, code: undefined as string | undefined };
+    }
+    const r = raw as Record<string, unknown>;
+    const nested = r.qrcode as Record<string, unknown> | undefined;
+    const base64 = String(r.base64 ?? nested?.base64 ?? "").trim() || undefined;
+    const pairingCode = (r.pairingCode ?? nested?.pairingCode) as string | null | undefined;
+    const code = String(r.code ?? nested?.code ?? "").trim() || undefined;
+    return { base64, pairingCode, code };
+  }
+
+  private formatConnectPayload(raw: unknown) {
+    const qr = this.extractConnectQr(raw);
+    return {
+      base64: qr.base64,
+      pairingCode: qr.pairingCode ?? null,
+      code: qr.code,
+      ...(qr.base64 || qr.pairingCode || qr.code
+        ? { qrcode: { base64: qr.base64, pairingCode: qr.pairingCode ?? null, code: qr.code } }
+        : {})
+    };
+  }
+
+  private async delay(ms: number) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async connectForQr() {
+    const waits = [0, 2000, 4000, 6000];
+    let lastRaw: unknown = {};
+    for (const wait of waits) {
+      if (wait > 0) await this.delay(wait);
+      lastRaw = await this.connect();
+      const qr = this.extractConnectQr(lastRaw);
+      if (qr.base64 || qr.pairingCode) {
+        return this.formatConnectPayload(lastRaw);
+      }
+    }
+    return this.formatConnectPayload(lastRaw);
+  }
+
   async connect() {
-    return this.request<{ base64?: string; pairingCode?: string; code?: string }>(
+    return this.request<{ base64?: string; pairingCode?: string; code?: string; qrcode?: { base64?: string } }>(
       `/instance/connect/${this.instanceName()}`,
       { method: "GET" }
     );
@@ -249,24 +291,24 @@ export class EvolutionApiClient {
     }
   }
 
-  private async ensureInstance(): Promise<boolean> {
+  private async ensureInstance(): Promise<{ created: boolean; response?: unknown }> {
     if (await this.instanceExists()) {
       this.logger.log(`Instancia Evolution "${this.instanceName()}" ja existe`);
-      return false;
+      return { created: false };
     }
 
     try {
-      await this.createInstance();
-      return true;
+      const response = await this.createInstance();
+      return { created: true, response };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith("INSTANCE_EXISTS:") || /already in use/i.test(msg)) {
         this.logger.log(`Instancia "${this.instanceName()}" ja registrada na Evolution, continuando`);
-        return false;
+        return { created: false };
       }
       this.logger.warn(`Create com webhook falhou, tentando instancia basica: ${msg}`);
       try {
-        await this.request(`/instance/create`, {
+        const response = await this.request(`/instance/create`, {
           method: "POST",
           body: {
             instanceName: this.instanceName(),
@@ -274,11 +316,11 @@ export class EvolutionApiClient {
             integration: "WHATSAPP-BAILEYS"
           }
         });
-        return true;
+        return { created: true, response };
       } catch (retryErr) {
         const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
         if (retryMsg.startsWith("INSTANCE_EXISTS:") || /already in use/i.test(retryMsg)) {
-          return false;
+          return { created: false };
         }
         throw retryErr;
       }
@@ -286,7 +328,7 @@ export class EvolutionApiClient {
   }
 
   async setup() {
-    const created = await this.ensureInstance();
+    const { created, response: createResponse } = await this.ensureInstance();
 
     try {
       await this.setWebhook();
@@ -294,7 +336,12 @@ export class EvolutionApiClient {
       this.logger.warn(`Webhook set falhou (pode ja existir): ${err}`);
     }
 
-    const connect = await this.connect();
+    const fromCreate = this.extractConnectQr(createResponse);
+    const connect =
+      fromCreate.base64 || fromCreate.pairingCode
+        ? this.formatConnectPayload(createResponse)
+        : await this.connectForQr();
+
     const state = await this.connectionState();
     const rawState =
       (state as { instance?: { state?: string } }).instance?.state ??
@@ -302,6 +349,17 @@ export class EvolutionApiClient {
       (state as { connectionStatus?: string }).connectionStatus ??
       "unknown";
 
-    return { created, connect, connectionState: rawState };
+    const hasQr = !!(connect.base64 || connect.pairingCode);
+    return {
+      created,
+      connect,
+      connectionState: rawState,
+      ...(hasQr
+        ? {}
+        : {
+            message:
+              "Instancia criada, mas o QR ainda nao veio. Aguarde 5s e clique em Gerar QR Code de novo."
+          })
+    };
   }
 }

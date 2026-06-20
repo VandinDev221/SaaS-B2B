@@ -19,7 +19,7 @@ type ConnectPayload = {
   base64?: string;
   pairingCode?: string | null;
   code?: string;
-  qrcode?: { base64?: string; pairingCode?: string | null };
+  qrcode?: { base64?: string; pairingCode?: string | null; code?: string };
 };
 
 type SetupResult = {
@@ -37,8 +37,28 @@ function toQrDataUrl(raw: string): string {
 
 function qrFromConnect(connect?: ConnectPayload): string | null {
   if (!connect) return null;
-  const raw = connect.base64 ?? connect.qrcode?.base64;
+  const raw =
+    connect.base64 ??
+    connect.qrcode?.base64 ??
+    (typeof connect.qrcode === "object" && connect.qrcode !== null
+      ? (connect.qrcode as { base64?: string }).base64
+      : undefined);
   return raw ? toQrDataUrl(raw) : null;
+}
+
+function applyConnectResult(
+  connect: ConnectPayload | undefined,
+  setQrSrc: (v: string | null) => void,
+  setMsg: (fn: (m: string | null) => string | null) => void
+): boolean {
+  const qr = qrFromConnect(connect);
+  if (qr) setQrSrc(qr);
+  const pairing = connect?.pairingCode ?? connect?.qrcode?.pairingCode;
+  if (pairing) {
+    setMsg(() => `Codigo de pareamento: ${pairing}`);
+    return true;
+  }
+  return !!qr;
 }
 
 export function EvolutionPanel() {
@@ -89,6 +109,13 @@ export function EvolutionPanel() {
     }
   }
 
+  async function fetchQr() {
+    const res = await fetch("/api/integrations/whatsapp/evolution/connect", { method: "POST" });
+    const data = (await res.json()) as { ok?: boolean; connect?: ConnectPayload; message?: string };
+    if (!res.ok || !data.ok) throw new Error(data.message ?? "Falha ao obter QR Code");
+    return data.connect;
+  }
+
   async function runSetup() {
     setBusy(true);
     setMsg(null);
@@ -97,13 +124,23 @@ export function EvolutionPanel() {
       const res = await fetch("/api/integrations/whatsapp/evolution/setup", { method: "POST" });
       const data = (await res.json()) as SetupResult;
       if (!res.ok || !data.ok) throw new Error(data.message ?? "Setup falhou");
-      const qr = qrFromConnect(data.connect);
-      if (qr) setQrSrc(qr);
-      const pairing = data.connect?.pairingCode ?? data.connect?.qrcode?.pairingCode;
-      if (pairing) {
-        setMsg(`Codigo de pareamento: ${pairing}`);
+
+      let hasQr = applyConnectResult(data.connect, setQrSrc, setMsg);
+      if (!hasQr) {
+        setMsg("Aguardando QR Code da Evolution...");
+        await new Promise((r) => setTimeout(r, 3000));
+        const connect = await fetchQr();
+        hasQr = applyConnectResult(connect, setQrSrc, setMsg);
       }
-      setMsg((m) => m ?? `Estado: ${data.connectionState ?? "verifique o QR"}`);
+
+      if (!hasQr) {
+        setMsg(
+          data.message ??
+            "QR ainda nao disponivel. Abra https://flowos-evolution.onrender.com/manager ou clique de novo em Gerar QR Code."
+        );
+      } else {
+        setMsg((m) => m ?? `Estado: ${data.connectionState ?? "escaneie o QR"}`);
+      }
       await loadStatus();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Erro no setup");
