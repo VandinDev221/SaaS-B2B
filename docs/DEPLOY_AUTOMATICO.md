@@ -82,7 +82,9 @@ Na sua maquina (PowerShell), com a **mesma** `DATABASE_URL` da API:
 
 ```powershell
 cd c:\dev\SaaS-B2B
-$env:DATABASE_URL = "postgresql://neondb_owner:...@ep-....neon.tech/neondb?sslmode=require"
+git pull
+$env:DATABASE_URL = "postgresql://...@ep-....neon.tech/neondb?sslmode=require"
+npm run db:migrate
 npm run db:seed
 ```
 
@@ -116,6 +118,7 @@ Web: https://flowos-web.onrender.com/login
 | `Redis connection` / TLS | Confira que a URL comeca com `rediss://` |
 | `P1001: Can't reach database` | Adicione `?sslmode=require` no Neon |
 | `relation "Lead" does not exist` (P3018) | **Reset** o banco Neon e redeploy |
+| `TenantAiKnowledge does not exist` | Rode `git pull`, depois `npm run db:migrate` e `npm run db:seed` |
 | `Credenciais invalidas` no login | Rode `npm run db:seed` com `DATABASE_URL` do Neon |
 | Upstash REST URL usada por engano | Use **Redis URL**, nao REST |
 
