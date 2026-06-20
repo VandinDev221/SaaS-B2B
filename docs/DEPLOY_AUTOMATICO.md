@@ -74,7 +74,27 @@ Log esperado:
 
 ---
 
-## Passo 5 — Testar
+## Passo 5 — Popular banco (obrigatorio na primeira vez)
+
+O Neon sobe **vazio**. Sem seed, o login `admin@flowos.local` retorna **Credenciais invalidas**.
+
+Na sua maquina (PowerShell), com a **mesma** `DATABASE_URL` da API:
+
+```powershell
+cd c:\dev\SaaS-B2B
+$env:DATABASE_URL = "postgresql://neondb_owner:...@ep-....neon.tech/neondb?sslmode=require"
+npm run db:seed
+```
+
+Ao final deve aparecer `Seed concluido` com email e senha.
+
+**Login demo:**
+- Email: `admin@flowos.local`
+- Senha: `admin12345`
+
+---
+
+## Passo 6 — Testar
 
 ```bash
 curl https://flowos-api.onrender.com/v1/observability/live
@@ -96,6 +116,7 @@ Web: https://flowos-web.onrender.com/login
 | `Redis connection` / TLS | Confira que a URL comeca com `rediss://` |
 | `P1001: Can't reach database` | Adicione `?sslmode=require` no Neon |
 | `relation "Lead" does not exist` (P3018) | **Reset** o banco Neon e redeploy |
+| `Credenciais invalidas` no login | Rode `npm run db:seed` com `DATABASE_URL` do Neon |
 | Upstash REST URL usada por engano | Use **Redis URL**, nao REST |
 
 ---
