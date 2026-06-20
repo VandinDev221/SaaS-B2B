@@ -28,7 +28,7 @@ Evolution e n8n: use apenas em rede interna; nao exponha n8n sem autenticacao em
 
 ## Render (producao)
 
-Blueprint: `render.yaml` na raiz (so API + Web). Postgres e Redis sao criados manualmente no painel (limite: 1 free de cada por conta).
+Blueprint: `render.yaml` (API + Web no Render). **Postgres no Neon**; Redis no Render Key Value.
 
 Guia passo a passo: [DEPLOY_AUTOMATICO.md](./DEPLOY_AUTOMATICO.md)
 

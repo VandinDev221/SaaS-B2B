@@ -1,90 +1,80 @@
-# Deploy Render — passo a passo
+# Deploy Render + Neon — passo a passo
 
 Repositorio: https://github.com/VandinDev221/SaaS-B2B
 
-## Ordem correta (importante)
+**Banco:** [Neon](https://neon.tech) (Postgres gratuito, sem limite do Render)  
+**API + Web:** Render  
+**Redis:** Render Key Value (1 free por conta)
 
-A API **nao sobe** sem `DATABASE_URL` e `REDIS_URL`. Crie o banco e o Redis **antes** de esperar o deploy da API funcionar.
+## Ordem correta
 
 ```
-1. Criar Postgres no Render
-2. Criar Redis no Render
-3. Colar URLs em flowos-api → Environment
+1. Criar projeto no Neon → copiar DATABASE_URL
+2. Criar Redis no Render (ou reutilizar existente)
+3. Colar DATABASE_URL + REDIS_URL em flowos-api → Environment
 4. Redeploy da API
-5. Blueprint / deploy do web
+5. Deploy do web (Blueprint)
 ```
 
 ---
 
-## Passo 1 — PostgreSQL
+## Passo 1 — Postgres no Neon
 
-1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **PostgreSQL**
-2. **Name:** `flowos-db`
-3. **Database:** `flowos`
-4. **User:** `flowos`
-5. **Plan:** Free (se disponivel)
-6. **Create Database**
+1. Acesse [console.neon.tech](https://console.neon.tech) e crie conta (GitHub ok)
+2. **New Project**
+   - **Name:** `flowos`
+   - **Region:** escolha a mais perto (ex. `US East` se API no Render US)
+   - **Postgres:** versao padrao (16+)
+3. No dashboard do projeto → **Connect**
+4. Copie a connection string **sem pooling** (recomendado para Prisma migrate):
 
-Se aparecer *"cannot have more than one active free tier database"*:
-- Va em **Dashboard** e procure **qualquer** Postgres ja criado (outro nome/projeto)
-- **Opcao A:** apague o que nao usa e crie `flowos-db`
-- **Opcao B:** reutilize o Postgres existente (qualquer nome serve)
-
-Copie a connection string:
-- Abra o Postgres → **Connect** → **External Database URL** (ou Internal)
-
-Exemplo:
 ```
-postgresql://flowos:XXXX@dpg-XXXX.oregon-postgres.render.com/flowos
+postgresql://neondb_owner:XXXX@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
 ```
+
+> Use a aba **Connection string** → role `neondb_owner` → **Direct connection** (nao pooled), para migrations funcionarem no deploy.
+
+5. Opcional: renomeie o database para `flowos` em **Databases** (nao obrigatorio — a URL ja funciona com `neondb`).
 
 ---
 
-## Passo 2 — Redis (Key Value)
+## Passo 2 — Redis no Render
 
-1. **New +** → **Key Value** (Redis)
+1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **Key Value**
 2. **Name:** `flowos-redis`
-3. **Plan:** Free
-4. **Maxmemory Policy:** `noeviction` (importante para filas BullMQ)
-5. **Create Key Value**
+3. **Maxmemory Policy:** `noeviction`
+4. **Plan:** Free
+5. **Connect** → copie **External Redis URL** ou **Internal**
 
-Se aparecer *"cannot have more than 1 free tier Key Value"*:
-- Reutilize o Redis existente ou apague o que nao usa
-
-Copie a URL:
-- Abra o Redis → **Connect** → **Internal Redis URL** ou **External**
-
-Exemplo:
 ```
 redis://red-XXXX:6379
 ```
+
+Se der *"cannot have more than 1 free tier Key Value"*: reutilize o Redis que ja existe na conta.
 
 ---
 
 ## Passo 3 — Blueprint (API + Web)
 
-1. **New +** → **Blueprint**
-2. Repo: `VandinDev221/SaaS-B2B` → branch `main`
-3. **Apply**
-
-Cria `flowos-api` e `flowos-web` (nao cria Postgres/Redis — limite free da conta).
+1. **New +** → **Blueprint** → repo `VandinDev221/SaaS-B2B` → `main`
+2. **Apply** → cria `flowos-api` e `flowos-web`
 
 ---
 
 ## Passo 4 — Variaveis na API (obrigatorio)
 
-**flowos-api** → **Environment** → adicione:
+**flowos-api** → **Environment**:
 
 | Variavel | Valor |
 |----------|--------|
-| `DATABASE_URL` | connection string do Passo 1 |
-| `REDIS_URL` | URL do Passo 2 |
+| `DATABASE_URL` | connection string do Neon (Passo 1) |
+| `REDIS_URL` | URL do Redis (Passo 2) |
 
-Clique **Save Changes**.
+**Save Changes** → **Manual Deploy** → **Deploy latest commit**
 
-Depois: **Manual Deploy** → **Deploy latest commit**.
-
-Aguarde o log mostrar migrations aplicadas e `Nest application successfully started`.
+No log, espere:
+- `prisma migrate deploy` aplicando migrations
+- `Nest application successfully started`
 
 ---
 
@@ -101,23 +91,29 @@ Web: https://flowos-web.onrender.com/login
 
 ## Erros comuns
 
-| Log | Causa | Solucao |
-|-----|-------|---------|
-| `Environment variable not found: DATABASE_URL` | Postgres nao configurado na API | Passo 4 |
-| `ERRO: DATABASE_URL ausente` | Mesmo problema | Cole a URL e redeploy |
-| `cannot have more than one free tier database` | Ja existe Postgres free na conta | Reutilize ou apague o antigo |
-| `Prisma failed to detect libssl` | Alpine sem OpenSSL | Corrigido no Dockerfile (push recente) |
-| Web 500 | API fora do ar ou URL errada | Confira `API_URL` em flowos-web |
+| Log | Solucao |
+|-----|---------|
+| `DATABASE_URL ausente` | Cole a URL do Neon em flowos-api → Environment |
+| `P1001: Can't reach database` | Confira `?sslmode=require` na URL do Neon |
+| `migrate deploy` falha | Use connection **Direct** do Neon, nao pooled |
+| Redis connection refused | Confira `REDIS_URL` e redeploy |
+| Web 500 | API fora do ar ou `API_URL` errado em flowos-web |
 
 ---
 
-## Variaveis opcionais depois
+## Neon — dicas
 
-**flowos-api:**
-- `EVOLUTION_API_URL` — quando tiver WhatsApp/Evolution
+- **Free tier** do Neon e suficiente para MVP
+- **Auto-suspend:** Neon pausa DB inativo; primeiro request pode demorar ~1s (API Render acorda o Neon no healthcheck)
+- **Backup:** Neon faz backup automatico no free
+- Nao precisa criar Postgres no Render
 
-**flowos-web** (exige redeploy se mudar):
-- `API_URL` / `NEXT_PUBLIC_API_URL` — URL publica da API
+---
+
+## Variaveis opcionais
+
+**flowos-api:** `EVOLUTION_API_URL` (WhatsApp)  
+**flowos-web:** `API_URL` / `NEXT_PUBLIC_API_URL` (se mudar dominio da API)
 
 ---
 
@@ -126,5 +122,3 @@ Web: https://flowos-web.onrender.com/login
 ```powershell
 git push origin main
 ```
-
-Render redeploya automaticamente se Auto-Deploy estiver ativo.

@@ -1,6 +1,7 @@
 # https://render.com/docs/blueprint-spec
-# Limite free: 1 Postgres + 1 Redis por conta — use os que ja existem no painel.
-# Apos o Blueprint: em flowos-api → Environment, cole DATABASE_URL e REDIS_URL.
+# Postgres: Neon (console.neon.tech) — evita limite de 1 DB free no Render.
+# Redis: Render Key Value (1 free por conta) ou existente na conta.
+# Apos Blueprint: flowos-api → Environment → DATABASE_URL (Neon) + REDIS_URL.
 services:
   - type: web
     name: flowos-api
