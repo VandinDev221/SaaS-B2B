@@ -226,7 +226,8 @@ export class WhatsappWebhookService {
     const { lead, created: createdLead } = found;
 
     const phoneJid = digitsToWhatsAppJid(phone);
-    const externalRef = phoneJid ?? opts?.lidJid ?? inbound.remoteJid;
+    const lidRef = opts?.lidJid?.endsWith("@lid") ? opts.lidJid : null;
+    const externalRef = lidRef ?? phoneJid ?? inbound.remoteJid;
 
     let conversation = await this.prisma.conversation.findFirst({
       where: { tenantId, leadId: lead.id }
@@ -241,11 +242,18 @@ export class WhatsappWebhookService {
           isAiAssisted: true
         }
       });
-    } else if (externalRef && conversation.externalRef !== externalRef) {
-      conversation = await this.prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { externalRef }
-      });
+    } else {
+      const nextRef =
+        lidRef ??
+        (conversation.externalRef?.endsWith("@lid") ? conversation.externalRef : null) ??
+        phoneJid ??
+        conversation.externalRef;
+      if (nextRef && conversation.externalRef !== nextRef) {
+        conversation = await this.prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { externalRef: nextRef }
+        });
+      }
     }
 
     await this.prisma.message.create({
@@ -256,7 +264,8 @@ export class WhatsappWebhookService {
         body: inbound.text,
         metadata: {
           source: opts?.source ?? "evolution_webhook",
-          ...(opts?.evolutionMessageId ? { evolutionMessageId: opts.evolutionMessageId } : {})
+          ...(opts?.evolutionMessageId ? { evolutionMessageId: opts.evolutionMessageId } : {}),
+          ...(opts?.lidJid ? { whatsappLid: opts.lidJid } : {})
         }
       }
     });
@@ -332,7 +341,41 @@ export class WhatsappWebhookService {
     if (imported > 0) {
       this.logger.log(`Evolution sync tenant=${tenantId} imported=${imported} skipped=${skipped}`);
     }
+
+    for (const [lid, phone] of lidPhoneMap) {
+      await this.repairOutboundTarget(tenantId, lid, phone);
+    }
+
     return { imported, skipped };
+  }
+
+  /** Corrige externalRef @lid e telefone do lead a partir da Evolution. */
+  private async repairOutboundTarget(tenantId: string, lid: string, phone: string) {
+    const e164 = toE164(phone);
+    const suffix = phone.slice(-8);
+    const convs = await this.prisma.conversation.findMany({
+      where: {
+        tenantId,
+        channel: "whatsapp",
+        OR: [{ externalRef: lid }, { lead: { phone: e164 } }, { lead: { phone: { endsWith: suffix } } }]
+      },
+      include: { lead: true }
+    });
+
+    for (const conv of convs) {
+      if (conv.lead.phone !== e164) {
+        await this.prisma.lead.update({
+          where: { id: conv.leadId },
+          data: { phone: e164 }
+        });
+      }
+      if (conv.externalRef !== lid) {
+        await this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { externalRef: lid }
+        });
+      }
+    }
   }
 
   private buildLidPhoneMap(records: Record<string, unknown>[]): Map<string, string> {

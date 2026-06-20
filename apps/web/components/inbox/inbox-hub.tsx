@@ -246,11 +246,23 @@ export function InboxHub({ initial }: { initial: InboxPayload }) {
     setSending(true);
     setSendError(null);
     try {
-      const res = await fetch(`/api/whatsapp/conversations/${conv.id}/messages`, {
+      let res = await fetch(`/api/whatsapp/conversations/${conv.id}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ body: reply })
       });
+      if (res.status === 401) {
+        const renewed = await refreshSession();
+        if (renewed) {
+          res = await fetch(`/api/whatsapp/conversations/${conv.id}/messages`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ body: reply })
+          });
+        }
+      }
       const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
       if (!res.ok) {
         const apiMsg = Array.isArray(data.message) ? data.message.join(", ") : data.message;

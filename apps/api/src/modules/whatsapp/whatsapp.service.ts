@@ -86,6 +86,27 @@ export class WhatsappService {
     });
   }
 
+  private async resolveRecipientWithLid(
+    conv: { id: string; externalRef: string | null; lead: { phone: string | null } }
+  ): Promise<string | null> {
+    const fromRef = resolveOutboundTarget({
+      externalRef: conv.externalRef,
+      leadPhone: conv.lead.phone
+    });
+    if (fromRef?.endsWith("@lid")) return fromRef;
+
+    const lastInbound = await this.prisma.message.findFirst({
+      where: { conversationId: conv.id, direction: "inbound" },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true }
+    });
+    const meta = (lastInbound?.metadata ?? {}) as Record<string, unknown>;
+    const lid = String(meta.whatsappLid ?? "").trim();
+    if (lid.endsWith("@lid")) return lid;
+
+    return fromRef;
+  }
+
   async sendMessage(tenantId: string, conversationId: string, body: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
@@ -93,7 +114,7 @@ export class WhatsappService {
     });
     if (!conv) throw new NotFoundException("Conversa nao encontrada");
 
-    const to = this.resolveRecipient(conv);
+    const to = await this.resolveRecipientWithLid(conv);
     if (!to) {
       throw new BadRequestException(
         "Telefone invalido para WhatsApp. Corrija o numero do lead no CRM (ex.: +55 DDD 9XXXX-XXXX) ou peca ao cliente enviar uma nova mensagem."
