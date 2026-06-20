@@ -65,6 +65,8 @@ rediss://default:AXXX...@us1-xxxx.upstash.io:6379
 
 **Save** → **Manual Deploy**
 
+> Se o deploy falhou antes com erro `Lead does not exist`: no Neon → **Branches** → **main** → **Reset** (ou apague e recrie o projeto). O banco ficou em estado inconsistente.
+
 Log esperado:
 - `prisma migrate deploy` OK
 - `Worker BullMQ ativo`
