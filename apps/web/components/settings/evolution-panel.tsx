@@ -176,7 +176,26 @@ export function EvolutionPanel() {
         ) : null}
 
         <p className="text-xs text-muted-foreground">
-          Primeira vez? Rode <code className="text-xs">npm run setup:evolution</code> com Docker ativo.
+          {status?.configured === false ? (
+            <>
+              <strong>Producao (Render):</strong> em <code className="text-xs">flowos-api → Environment</code> defina{" "}
+              <code className="text-xs">WHATSAPP_PROVIDER=evolution</code>, <code className="text-xs">EVOLUTION_API_URL</code>{" "}
+              (URL publica do servidor Evolution), <code className="text-xs">EVOLUTION_API_KEY</code>,{" "}
+              <code className="text-xs">EVOLUTION_WEBHOOK_URL</code> (
+              <code className="text-xs">https://SUA-API/v1/integrations/whatsapp/webhook/evolution</code>) e{" "}
+              <code className="text-xs">EVOLUTION_WEBHOOK_SECRET</code>. Depois redeploy da API.
+              <br />
+              <strong>Local:</strong> rode <code className="text-xs">npm run setup:evolution</code> com Docker ativo.
+            </>
+          ) : status?.connectionState === "offline" || status?.error ? (
+            <>
+              Evolution configurado mas offline. Confira se o servidor Evolution esta no ar e se{" "}
+              <code className="text-xs">EVOLUTION_API_KEY</code> confere com <code className="text-xs">AUTHENTICATION_API_KEY</code>{" "}
+              do container.
+            </>
+          ) : (
+            <>Escaneie o QR no WhatsApp → Aparelhos conectados → Conectar aparelho.</>
+          )}
         </p>
       </CardContent>
     </Card>

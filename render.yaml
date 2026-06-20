@@ -2,6 +2,7 @@
 # Postgres: Neon (console.neon.tech)
 # Redis: Upstash (console.upstash.com) — URL rediss://
 # Apos Blueprint: flowos-api → DATABASE_URL + REDIS_URL
+# WhatsApp: flowos-evolution → DATABASE_CONNECTION_URI (Neon + schema=evolution)
 services:
   - type: web
     name: flowos-api
@@ -24,11 +25,11 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://flowos-web.onrender.com
+        sync: false
       - key: PUBLIC_WEB_URL
-        value: https://flowos-web.onrender.com
+        sync: false
       - key: EVOLUTION_API_URL
-        value: https://evolution.example.com
+        value: https://flowos-evolution.onrender.com
       - key: EVOLUTION_API_KEY
         generateValue: true
       - key: EVOLUTION_WEBHOOK_SECRET
@@ -37,8 +38,53 @@ services:
         value: "false"
       - key: ALLOW_PIX_MOCK
         value: "false"
+      - key: WHATSAPP_PROVIDER
+        value: evolution
+      - key: EVOLUTION_INSTANCE
+        value: flowos
+      - key: EVOLUTION_WEBHOOK_URL
+        value: https://flowos-api.onrender.com/v1/integrations/whatsapp/webhook/evolution
       - key: AUTOMATION_ENABLED
         value: "true"
+
+  - type: web
+    name: flowos-evolution
+    runtime: image
+    plan: free
+    image:
+      url: docker.io/atendai/evolution-api:v2.1.1
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: AUTHENTICATION_API_KEY
+        fromService:
+          type: web
+          name: flowos-api
+          envVarKey: EVOLUTION_API_KEY
+      - key: SERVER_URL
+        value: https://flowos-evolution.onrender.com
+      - key: LOG_LEVEL
+        value: ERROR
+      - key: DEL_INSTANCE
+        value: "false"
+      - key: CONFIG_SESSION_PHONE_CLIENT
+        value: FLOWOS
+      - key: QRCODE_LIMIT
+        value: "30"
+      - key: DATABASE_ENABLED
+        value: "true"
+      - key: DATABASE_PROVIDER
+        value: postgresql
+      - key: DATABASE_CONNECTION_URI
+        sync: false
+      - key: CACHE_REDIS_ENABLED
+        value: "true"
+      - key: CACHE_REDIS_URI
+        fromService:
+          type: web
+          name: flowos-api
+          envVarKey: REDIS_URL
 
   - type: web
     name: flowos-web

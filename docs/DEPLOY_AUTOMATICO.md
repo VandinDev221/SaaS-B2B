@@ -109,6 +109,42 @@ Web: https://flowos-web.onrender.com/login
 
 ---
 
+## Passo 7 — WhatsApp (Evolution API)
+
+Guia completo: **[docs/EVOLUTION_PRODUCAO.md](./EVOLUTION_PRODUCAO.md)**
+
+Resumo rapido apos sync do Blueprint (`flowos-evolution` no Render):
+
+| Variavel | Exemplo |
+|----------|---------|
+| `WHATSAPP_PROVIDER` | `evolution` |
+| `EVOLUTION_API_URL` | `https://evo.seudominio.com` (URL **publica** do servidor Evolution) |
+| `EVOLUTION_API_KEY` | Mesmo valor de `AUTHENTICATION_API_KEY` no container Evolution |
+| `EVOLUTION_INSTANCE` | `flowos` |
+| `EVOLUTION_WEBHOOK_URL` | `https://flowos-api.onrender.com/v1/integrations/whatsapp/webhook/evolution` |
+| `EVOLUTION_WEBHOOK_SECRET` | Segredo forte (32+ chars); Evolution envia no header `apikey` |
+
+**Importante:** `EVOLUTION_API_URL=https://evolution.example.com` no blueprint e so placeholder — substitua por um servidor Evolution real.
+
+### Subir Evolution (VPS com Docker)
+
+Na VPS (Ubuntu), com Postgres e Redis acessiveis (ou use o `docker-compose.yml` local so com `evolution-api`):
+
+```powershell
+# Na maquina de dev, com API local na porta 4000:
+npm run setup:evolution
+```
+
+Em **producao**, apos o Evolution estar no ar:
+
+1. Configure as variaveis acima em **flowos-api → Environment** no Render.
+2. **Redeploy** da API.
+3. No app: **Settings → Conectar / Gerar QR Code** e escaneie no celular.
+
+O webhook precisa ser alcancavel pela internet (API Render com HTTPS). Sem isso, mensagens recebidas nao entram no Inbox.
+
+---
+
 ## Erros comuns
 
 | Log | Solucao |
@@ -120,6 +156,9 @@ Web: https://flowos-web.onrender.com/login
 | `relation "Lead" does not exist` (P3018) | **Reset** o banco Neon e redeploy |
 | `TenantAiKnowledge does not exist` | Rode `git pull`, depois `npm run db:migrate` e `npm run db:seed` |
 | `Credenciais invalidas` no login | Rode `npm run db:seed` com `DATABASE_URL` do Neon |
+| `Provedor: mock` / Evolution nao configurado | Defina `WHATSAPP_PROVIDER=evolution` + `EVOLUTION_API_URL` real no Render |
+| `Evolution inacessivel` | Servidor Evolution offline ou URL errada |
+| `Evolution API 401` | `EVOLUTION_API_KEY` diferente de `AUTHENTICATION_API_KEY` do Evolution |
 | Upstash REST URL usada por engano | Use **Redis URL**, nao REST |
 
 ---
@@ -127,15 +166,15 @@ Web: https://flowos-web.onrender.com/login
 ## Arquitetura final
 
 ```
-[Usuario] → flowos-web (Render)
+[Usuario] → flowos-web (Vercel/Render)
                 ↓
            flowos-api (Render)
-            ↓         ↓
-         [Neon]   [Upstash]
-        Postgres    Redis
+            ↓         ↓         ↓
+         [Neon]   [Upstash]  [Evolution VPS]
+        Postgres    Redis     WhatsApp
 ```
 
-Nao precisa criar Postgres nem Redis no Render.
+Nao precisa criar Postgres nem Redis no Render. **Evolution** roda em servidor separado (VPS/Docker) com URL publica.
 
 ---
 
