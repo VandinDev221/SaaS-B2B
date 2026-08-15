@@ -1,20 +1,20 @@
-FROM node:20-alpine AS deps
-RUN apk add --no-cache openssl libc6-compat
+FROM node:20-slim AS deps
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 RUN npm install
 
-FROM node:20-alpine AS builder
-RUN apk add --no-cache openssl libc6-compat
+FROM node:20-slim AS builder
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY apps/api ./apps/api
 RUN npm run prisma:generate -w @flowos/api && npm run build -w @flowos/api
 
-FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl libc6-compat
+FROM node:20-slim AS runner
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/package.json ./package.json
