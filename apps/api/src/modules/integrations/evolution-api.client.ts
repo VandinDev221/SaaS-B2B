@@ -30,10 +30,22 @@ export class EvolutionApiClient {
   }
 
   webhookUrl(): string {
+    const configuredWebhook = this.config.get<string>("EVOLUTION_WEBHOOK_URL");
+    if (configuredWebhook) {
+      return configuredWebhook;
+    }
+    const renderExternalUrl = this.config.get<string>("RENDER_EXTERNAL_URL");
+    if (renderExternalUrl) {
+      return `${renderExternalUrl.replace(/\/$/, "")}/v1/integrations/whatsapp/webhook/evolution`;
+    }
     return this.config.get<string>(
       "EVOLUTION_WEBHOOK_URL",
       "http://host.docker.internal:4000/v1/integrations/whatsapp/webhook/evolution"
     );
+  }
+
+  apiUrl(): string {
+    return this.baseUrl();
   }
 
   private baseUrl() {

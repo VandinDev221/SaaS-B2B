@@ -36,6 +36,7 @@ export class EvolutionAdminController {
         connectionState,
         webhookUrl: this.evolution.webhookUrl(),
         webhookSynced: webhook.synced,
+        evolutionApiUrl: this.evolution.apiUrl(),
         ...(webhook.error ? { webhookError: webhook.error } : {}),
         ...(connected && webhook.synced
           ? { message: "WhatsApp conectado. Webhook sincronizado — mensagens devem aparecer no Inbox (aba Todos)." }
@@ -56,6 +57,7 @@ export class EvolutionAdminController {
         provider: "evolution",
         instance: this.evolution.instanceName(),
         connectionState: coldStart ? "close" : "offline",
+        evolutionApiUrl: this.evolution.apiUrl(),
         error: coldStart
           ? "Evolution acordando (Render free). Aguarde ~1 min e clique Atualizar status."
           : message

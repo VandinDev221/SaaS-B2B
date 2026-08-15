@@ -15,6 +15,7 @@ type Status = {
   webhookError?: string;
   error?: string;
   message?: string;
+  evolutionApiUrl?: string;
 };
 
 type ConnectPayload = {
@@ -182,9 +183,12 @@ export function EvolutionPanel() {
       }
 
       if (!hasQr) {
+        const managerLink = status?.evolutionApiUrl 
+          ? `${status.evolutionApiUrl.replace(/\/$/, "")}/manager` 
+          : "https://flowos-evolution.onrender.com/manager";
         setMsg(
           data.message ??
-            "QR ainda nao disponivel. Abra https://flowos-evolution.onrender.com/manager ou clique de novo em Gerar QR Code."
+            `QR ainda nao disponivel. Abra ${managerLink} ou clique de novo em Gerar QR Code.`
         );
       } else {
         setMsg((m) => m ?? `Estado: ${data.connectionState ?? "escaneie o QR"}`);

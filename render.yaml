@@ -29,7 +29,7 @@ services:
       - key: PUBLIC_WEB_URL
         sync: false
       - key: EVOLUTION_API_URL
-        value: https://flowos-evolution.onrender.com
+        value: http://flowos-evolution:8080
       - key: EVOLUTION_API_KEY
         generateValue: true
       - key: EVOLUTION_WEBHOOK_SECRET
@@ -42,8 +42,6 @@ services:
         value: evolution
       - key: EVOLUTION_INSTANCE
         value: flowos
-      - key: EVOLUTION_WEBHOOK_URL
-        value: https://flowos-api.onrender.com/v1/integrations/whatsapp/webhook/evolution
       - key: AUTOMATION_ENABLED
         value: "true"
       - key: WHATSAPP_INBOX_SYNC_ENABLED
@@ -104,9 +102,9 @@ services:
       - key: PORT
         value: 3000
       - key: API_URL
-        value: https://flowos-api.onrender.com
+        value: http://flowos-api:4000
       - key: NEXT_PUBLIC_API_URL
-        value: https://flowos-api.onrender.com
+        value: https://sua-api.onrender.com
       - key: NEXT_PUBLIC_APP_NAME
         value: FLOWOS
       - key: COOKIE_SECURE
