@@ -46,21 +46,26 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.worker = new Worker(AUTOMATION_QUEUE_NAME, (job) => this.processJob(job), {
-      connection: this.workerConnection,
-      concurrency: Number(this.config.get<string>("AUTOMATION_WORKER_CONCURRENCY", "5"))
-    });
+    try {
+      this.worker = new Worker(AUTOMATION_QUEUE_NAME, (job) => this.processJob(job), {
+        connection: this.workerConnection,
+        concurrency: Number(this.config.get<string>("AUTOMATION_WORKER_CONCURRENCY", "5"))
+      });
 
-    this.worker.on("failed", (job, err) => {
-      this.logger.error(`Job ${job?.name} falhou: ${err.message}`);
-    });
+      this.worker.on("failed", (job, err) => {
+        this.logger.error(`Job ${job?.name} falhou: ${err.message}`);
+      });
 
-    await this.scheduleFollowupD1Scan();
-    await this.scheduleFollowupD7Scan();
-    await this.scheduleBillingRecoveryScan();
-    await this.schedulePostSaleScan();
-    await this.scheduleTrialExpiryScan();
-    this.logger.log("Worker BullMQ ativo (flowos-automation)");
+      await this.scheduleFollowupD1Scan();
+      await this.scheduleFollowupD7Scan();
+      await this.scheduleBillingRecoveryScan();
+      await this.schedulePostSaleScan();
+      await this.scheduleTrialExpiryScan();
+      this.logger.log("Worker BullMQ ativo (flowos-automation)");
+    } catch (err) {
+      this.logger.error("Erro crítico ao inicializar automações BullMQ (Redis/Upstash):", err);
+      throw err;
+    }
   }
 
   async onModuleDestroy() {
